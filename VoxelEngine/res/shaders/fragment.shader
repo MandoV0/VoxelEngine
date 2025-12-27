@@ -3,10 +3,12 @@
 layout(location = 0) out vec4 color;
 
 in vec2 v_TexCoord;
+in float v_VertexAO;
 
 uniform sampler2D u_Texture;
 
 void main()
 {
 	color = texture(u_Texture, v_TexCoord);
+	color = color / (v_VertexAO * 2 + 1); // 2 is currently the intensity
 }

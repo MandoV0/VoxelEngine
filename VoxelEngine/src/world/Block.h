@@ -10,5 +10,10 @@ enum BlockType
 
 class Block
 {
-
+private:
+	BlockType m_Type;
+public:
+	Block() : m_Type(BlockType::AIR) {}
+	Block(BlockType type) : m_Type(type) {}
+	BlockType GetType() const { return m_Type; }
 };
