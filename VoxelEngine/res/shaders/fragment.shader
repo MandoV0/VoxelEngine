@@ -9,6 +9,5 @@ uniform sampler2D u_Texture;
 
 void main()
 {
-	color = texture(u_Texture, v_TexCoord);
-	color = color / (v_VertexAO * 2 + 1); // 2 is currently the intensity
+	color = texture( u_Texture, v_TexCoord );
 }

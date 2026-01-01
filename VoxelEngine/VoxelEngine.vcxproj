@@ -161,6 +161,7 @@
     <ClInclude Include="src\world\Chunk.h" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="..\..\..\..\Downloads\Atlast.png" />
     <Image Include="..\..\..\..\Downloads\PureBDcraft  32x MC121\assets\minecraft\textures\block_alt\cobblestone\rounded\cobblestone.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

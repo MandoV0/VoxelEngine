@@ -120,6 +120,12 @@ void Chunk::CreateBlock(std::vector<float>& vertices, std::vector<unsigned int>&
 
     unsigned int baseIndex = vertices.size() / floatsPerVertex;
 
+	float tileSize = 1.0f / 32.0f;
+	BlockType blockType = GetBlockType(x, y, z);
+	int tileX = 0 + blockType - 1;
+	int tileY = 31; // (0, 0) in OpenGL is the bottom-left, so to get the first texture we need to set Y to 31
+
+
     for (int i = 0; i < verticesPerBlock; i++)
     {
         int v = i * floatsPerVertex;
@@ -127,9 +133,15 @@ void Chunk::CreateBlock(std::vector<float>& vertices, std::vector<unsigned int>&
         vertices.push_back(cubeVertices[v + 0] + x);
         vertices.push_back(cubeVertices[v + 1] + y);
         vertices.push_back(cubeVertices[v + 2] + z);
+        
+        float u = (tileX + cubeVertices[v + 3]) * tileSize;
+        float v_coord = (tileY + cubeVertices[v + 4]) * tileSize;
 
-        vertices.push_back(cubeVertices[v + 3]); // u
-        vertices.push_back(cubeVertices[v + 4]); // v
+        //vertices.push_back(cubeVertices[v + 3]); // U
+        //vertices.push_back(cubeVertices[v + 4]); // V
+
+        vertices.push_back(u);
+        vertices.push_back(v_coord);
 
 		vertices.push_back(cubeVertices[v + 5]);
     }

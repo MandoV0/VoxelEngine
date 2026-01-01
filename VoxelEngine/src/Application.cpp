@@ -65,7 +65,7 @@ int main(void)
 
 		Renderer renderer;
 
-		std::string texturePath = "res/textures/cobblestone.png";
+		std::string texturePath = "res/textures/atlas.png";
 		Texture texture(texturePath);
 		texture.Bind();
 		shader.SetUniform1i("u_Texture", 0);
@@ -83,8 +83,9 @@ int main(void)
 
 
 		for (int x = 0; x < 16; x++)
-			for (int z = 0; z < 16; z++)
-				chunk.SetBlock(x, 0, z, BlockType::GRASS);
+			for (int y = 0; y < 16; y++)
+				for (int z = 0; z < 16; z++)
+				chunk.SetBlock(x, y, z, BlockType::GRASS);
 
 
 		chunk.GenerateMesh();
@@ -124,7 +125,6 @@ int main(void)
 			bool rightMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 			bool canClick = clickTimer <= 0.0f;
 
-			// Break block (left click)
 			if (leftMouseDown && canClick)
 			{
 				clickTimer = clickCooldown;
@@ -180,7 +180,6 @@ int main(void)
 			shader.SetUniform1i("u_Texture", 0);
 
 			chunk.Render(renderer, shader);
-
 			chunk.RenderBlockOutline(renderer, shader);
 
 			// Render Crosshair
