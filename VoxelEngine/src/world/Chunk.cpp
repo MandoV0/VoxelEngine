@@ -2,13 +2,21 @@
 #include "Block.h"
 #include "../VertexBufferLayout.h"
 #include <iostream>
+#include "../vendor/FastNoiseLite.h"
 
-Chunk::Chunk(glm::ivec3 position) : m_Position(position), m_VA(nullptr), m_VB(nullptr), m_IB(nullptr)
+Chunk::Chunk(glm::ivec2 position) : m_ChunkPosition(position), m_VA(nullptr), m_VB(nullptr), m_IB(nullptr)
 {
-    for (int x = 0; x < 16; x++)
-        for (int y = 0; y < 16; y++)
-            for (int z = 0; z < 16; z++)
+    for (int x = 0; x < WIDTH; x++)
+        for (int y = 0; y < HEIGHT; y++)
+            for (int z = 0; z < WIDTH; z++)
                 m_Blocks[x][y][z] = Block(BlockType::AIR);
+}
+
+Chunk::~Chunk()
+{
+    delete m_VA;
+    delete m_VB;
+    delete m_IB;
 }
 
 void Chunk::GenerateMesh()
@@ -16,9 +24,9 @@ void Chunk::GenerateMesh()
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
 
-    for (int x = 0; x < 16; x++)
-        for (int y = 0; y < 16; y++)
-            for (int z = 0; z < 16; z++)
+    for (int x = 0; x < WIDTH; x++)
+        for (int y = 0; y < HEIGHT; y++)
+            for (int z = 0; z < WIDTH; z++)
             {
                 if (GetBlockType(x, y, z) != BlockType::AIR)
                     CreateBlock(vertices, indices, x, y, z);
@@ -130,9 +138,9 @@ void Chunk::CreateBlock(std::vector<float>& vertices, std::vector<unsigned int>&
     {
         int v = i * floatsPerVertex;
 
-        vertices.push_back(cubeVertices[v + 0] + x);
-        vertices.push_back(cubeVertices[v + 1] + y);
-        vertices.push_back(cubeVertices[v + 2] + z);
+        vertices.push_back(cubeVertices[v + 0] + x + (m_ChunkPosition.x * WIDTH));
+        vertices.push_back(cubeVertices[v + 1] + y);                                
+        vertices.push_back(cubeVertices[v + 2] + z + (m_ChunkPosition.y * WIDTH));
         
         float u = (tileX + cubeVertices[v + 3]) * tileSize;
         float v_coord = (tileY + cubeVertices[v + 4]) * tileSize;
@@ -159,7 +167,7 @@ BlockType Chunk::GetBlockType(int x, int y, int z)
 
 bool Chunk::Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, glm::ivec3& hitBlock, glm::ivec3& placeBlock)
 {
-    glm::vec3 chunkWorldOffset = glm::vec3(m_Position) * 16.0f;
+    glm::vec3 chunkWorldOffset = glm::vec3(m_ChunkPosition.x * WIDTH, 0, m_ChunkPosition.y * WIDTH);
     glm::vec3 start = origin - chunkWorldOffset; // Work in local chunk space
     
     // The DDA algorithm for Raycasting Voxel grids works best with a grid starting at 0. So we shift our coordinate space by 0.5.
@@ -217,9 +225,9 @@ bool Chunk::Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, gl
 
     for (int i = 0; i < maxSteps; i++)
     {
-        if (mapPos.x >= 0 && mapPos.x < 16 &&
-            mapPos.y >= 0 && mapPos.y < 16 &&
-            mapPos.z >= 0 && mapPos.z < 16)
+        if (mapPos.x >= 0 && mapPos.x < WIDTH &&
+            mapPos.y >= 0 && mapPos.y < HEIGHT &&
+            mapPos.z >= 0 && mapPos.z < WIDTH)
         {
             if (GetBlockType(mapPos.x, mapPos.y, mapPos.z) != BlockType::AIR)
             {
@@ -271,7 +279,7 @@ bool Chunk::Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, gl
 
 void Chunk::SetBlock(int x, int y, int z, BlockType type)
 {
-    if (x >= 0 && x < 16 && y >= 0 && y < 16 && z >= 0 && z < 16)
+    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT && z >= 0 && z < WIDTH)
         m_Blocks[x][y][z] = Block(type);
 }
 
@@ -338,3 +346,45 @@ void Chunk::RenderBlockOutline(Renderer& renderer, Shader& shader)
     shader.Bind();
     glDrawElements(GL_LINES, outlineIB.GetCount(), GL_UNSIGNED_INT, nullptr);
 }
+
+/*
+void Chunk::GenerateTerrain()
+{
+FastNoiseLite fnl;
+
+const int MAX_HEIGHT = 76;
+const int MIN_HEIGHT = 50;
+
+std::cout << "Width: " << WIDTH << ", Height: " << HEIGHT << std::endl;
+
+for (int x = 0; x < WIDTH; x++)
+{
+    for (int y = 0; y < HEIGHT; y++)
+    {
+        for (int z = 0; z < WIDTH; z++)
+        {
+            int interpHeight = 0;
+            float noise = fnl.GetNoise(static_cast<float>(x), static_cast<float>(z));
+
+            interpHeight = MIN_HEIGHT + noise * (MAX_HEIGHT - MIN_HEIGHT);
+
+            if (y > interpHeight)
+            {
+                m_Blocks[x][y][z] = Block(BlockType::AIR);
+                continue;
+            }
+            if (y < 5)
+            {
+                m_Blocks[x][y][z] = Block(BlockType::STONE);
+                std::cout << "Generating Stone block at (" << x << ", " << y << ", " << z << ")\n" << std::endl;
+            }
+            else
+            {
+                m_Blocks[x][y][z] = Block(BlockType::GRASS);
+                std::cout << "Generating Grass block at (" << x << ", " << y << ", " << z << ")\n" << std::endl;
+            }
+        }
+    }
+}
+}
+*/

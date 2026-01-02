@@ -8,17 +8,24 @@
 
 class Chunk
 {
+static constexpr int WIDTH = 16;
+static constexpr int HEIGHT = 128;
 private:
-	glm::ivec3 m_Position;
+	/*
+	* Chunk Position in chunk space, NOT WORLD SPACE
+	* Example (0, 0) = chunk at world (0...15, 0....15)
+	*/
+	glm::ivec2 m_ChunkPosition;
 	VertexArray* m_VA;
 	VertexBuffer* m_VB;
 	IndexBuffer* m_IB;
-	Block m_Blocks[16][16][16];
+	Block m_Blocks[WIDTH][HEIGHT][WIDTH];
 
 	bool m_HasSelectedBlock;
 	glm::ivec3 m_SelectedBlock;
 public:
-	Chunk(glm::ivec3 position);
+	Chunk(glm::ivec2 position);
+	~Chunk();
 	
 	void GenerateMesh();
 	void Render(Renderer& renderer, Shader& shader);

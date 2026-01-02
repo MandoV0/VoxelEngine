@@ -20,7 +20,7 @@
 #include <ext/matrix_transform.hpp>
 #include "Input.h"
 #include "Camera.h"
-#include "world/Chunk.h"
+#include "world/World.h"
 
 
 int main(void)
@@ -54,7 +54,6 @@ int main(void)
 	}
 
 	{
-
 		glEnable(GL_DEPTH_TEST);
 		glCullFace(GL_BACK);
 		glFrontFace(GL_CCW);
@@ -79,16 +78,15 @@ int main(void)
 
 		float lastFrame = 0.0f;
 
-		Chunk chunk(glm::ivec3(0, 0, 0));
+		World world(1337);
 
-
-		for (int x = 0; x < 16; x++)
-			for (int y = 0; y < 16; y++)
-				for (int z = 0; z < 16; z++)
-				chunk.SetBlock(x, y, z, BlockType::GRASS);
-
-
-		chunk.GenerateMesh();
+		for (int x = -1; x <= 1; x++)
+		{
+			for (int z = -1; z <= 1; z++)
+			{
+				world.GenerateChunk(x, z);
+			}
+		}
 
 		// Crosshair Setup
 		float crosshairVertices[] = {
@@ -125,49 +123,6 @@ int main(void)
 			bool rightMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 			bool canClick = clickTimer <= 0.0f;
 
-			if (leftMouseDown && canClick)
-			{
-				clickTimer = clickCooldown;
-				glm::vec3 rayOrigin = camera.GetPosition();
-				glm::vec3 rayDir = camera.GetFront();
-
-				glm::ivec3 hitBlock, placeBlock;
-				if (chunk.Raycast(rayOrigin, rayDir, 15.0f, hitBlock, placeBlock))
-				{
-					chunk.SetBlock(hitBlock.x, hitBlock.y, hitBlock.z, BlockType::AIR);
-					chunk.GenerateMesh();
-				}
-			}
-
-			if (rightMouseDown && canClick)
-			{
-				clickTimer = clickCooldown;
-				glm::vec3 rayOrigin = camera.GetPosition();
-				glm::vec3 rayDir = camera.GetFront();
-
-				glm::ivec3 hitBlock, placeBlock;
-				if (chunk.Raycast(rayOrigin, rayDir, 15.0f, hitBlock, placeBlock))
-				{
-					chunk.SetBlock(placeBlock.x, placeBlock.y, placeBlock.z, BlockType::GRASS);
-					chunk.GenerateMesh();
-				}
-			}
-
-
-			// Block Outline
-			glm::vec3 rayOrigin = camera.GetPosition();
-			glm::vec3 rayDir = camera.GetFront();
-			glm::ivec3 hitBlock, placeBlock;
-
-			if (chunk.Raycast(rayOrigin, rayDir, 20.0f, hitBlock, placeBlock))
-			{
-				chunk.SetSelectedBlock(true, hitBlock);
-			}
-			else
-			{
-				chunk.SetSelectedBlock(false, glm::ivec3(0));
-			}
-
 			camera.ProcessKeyboard(input, deltaTime);
 			camera.ProcessMouse(input.GetMouseInput());
 
@@ -179,8 +134,7 @@ int main(void)
 			texture.Bind();
 			shader.SetUniform1i("u_Texture", 0);
 
-			chunk.Render(renderer, shader);
-			chunk.RenderBlockOutline(renderer, shader);
+			world.Render(renderer, shader);
 
 			// Render Crosshair
 			glDisable(GL_DEPTH_TEST);
