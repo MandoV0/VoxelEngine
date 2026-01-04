@@ -144,6 +144,7 @@
     <ClCompile Include="src\VertexArray.cpp" />
     <ClCompile Include="src\VertexBuffer.cpp" />
     <ClCompile Include="src\world\Chunk.cpp" />
+    <ClCompile Include="src\world\Skybox.cpp" />
     <ClCompile Include="src\world\World.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -162,11 +163,13 @@
     <ClInclude Include="src\VertexBufferLayout.h" />
     <ClInclude Include="src\world\Block.h" />
     <ClInclude Include="src\world\Chunk.h" />
+    <ClInclude Include="src\world\Skybox.h" />
     <ClInclude Include="src\world\World.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="..\..\..\..\Downloads\Atlast.png" />
     <Image Include="..\..\..\..\Downloads\PureBDcraft  32x MC121\assets\minecraft\textures\block_alt\cobblestone\rounded\cobblestone.png" />
+    <Image Include="..\..\..\..\Downloads\sbs_-_cloudy_skyboxes_-_cubemap\Cubemap\Cubemap_Sky_04-512x512.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

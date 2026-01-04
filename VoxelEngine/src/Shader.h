@@ -2,6 +2,8 @@
 
 #include <string>
 #include <unordered_map>
+#include <glm.hpp>
+#include <gtc/type_ptr.hpp>
 
 class Shader
 {
@@ -24,7 +26,7 @@ public:
 	void SetUniform1i(const std::string& name, int value);
 	void SetUniform1f(const std::string& name, float value);
 	void SetUniform2f(const std::string& name, float v1, float v2);
-	void SetUniformMat4f(const std::string& name, const float* matrix);
+	void SetUniformMat4f(const std::string& name, const glm::mat4& mat);
 
 private:
 	int GetUniformLocation(const std::string& name);

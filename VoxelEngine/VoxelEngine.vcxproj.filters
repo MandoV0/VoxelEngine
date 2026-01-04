@@ -51,6 +51,9 @@
     <ClCompile Include="src\world\World.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="src\world\Skybox.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Renderer.h">
@@ -101,12 +104,18 @@
     <ClInclude Include="src\world\World.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="src\world\Skybox.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="..\..\..\..\Downloads\PureBDcraft  32x MC121\assets\minecraft\textures\block_alt\cobblestone\rounded\cobblestone.png">
       <Filter>Ressourcendateien</Filter>
     </Image>
     <Image Include="..\..\..\..\Downloads\Atlast.png">
+      <Filter>Ressourcendateien</Filter>
+    </Image>
+    <Image Include="..\..\..\..\Downloads\sbs_-_cloudy_skyboxes_-_cubemap\Cubemap\Cubemap_Sky_04-512x512.png">
       <Filter>Ressourcendateien</Filter>
     </Image>
   </ItemGroup>

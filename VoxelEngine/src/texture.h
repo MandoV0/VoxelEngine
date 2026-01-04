@@ -20,4 +20,8 @@ public:
 	inline int GetWidth() const { return m_Width; }
 	inline int GetHeight() const { return m_Height; }
 
+	/*
+	* Since most Cubemaps come packed in one texture, we add a convinience method that automatically slices them and returns the textureID.
+	*/
+	static unsigned int LoadCubemap(const std::string& path);
 };

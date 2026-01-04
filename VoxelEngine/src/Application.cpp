@@ -21,6 +21,7 @@
 #include "Input.h"
 #include "Camera.h"
 #include "world/World.h"
+#include "world/Skybox.h"
 
 
 int main(void)
@@ -97,6 +98,7 @@ int main(void)
 		};
 		unsigned int crosshairIndices[] = { 0, 1, 2, 3 };
 
+
 		VertexArray chVA;
 		VertexBuffer chVB(crosshairVertices, sizeof(crosshairVertices));
 		VertexBufferLayout chLayout;
@@ -107,6 +109,9 @@ int main(void)
 
 		float clickTimer = 0.0f;
 		float clickCooldown = 0.15f;
+
+		unsigned int cubeMapID = Texture::LoadCubemap("res/textures/Cubemap_Sky_04-512x512.png");;
+		Skybox sb(cubeMapID);
 
 		while (!glfwWindowShouldClose(window))
 		{
@@ -130,17 +135,20 @@ int main(void)
 			glm::mat4 mvp = proj * view * model;
 
 			shader.Bind();
-			shader.SetUniformMat4f("u_MVP", glm::value_ptr(mvp));
+			shader.SetUniformMat4f("u_MVP", mvp);
 			texture.Bind();
 			shader.SetUniform1i("u_Texture", 0);
 
 			world.Render(renderer, shader);
 
+			// Render Skybox
+			sb.Draw(view, proj);
+
 			// Render Crosshair
 			glDisable(GL_DEPTH_TEST);
 			shader.Bind();
 			glm::mat4 identity = glm::mat4(1.0f);
-			shader.SetUniformMat4f("u_MVP", glm::value_ptr(identity));
+			shader.SetUniformMat4f("u_MVP", identity);
 
 			chVA.Bind();
 			chIB.Bind();
