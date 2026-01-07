@@ -35,6 +35,10 @@ public:
 
 	void Render(Renderer& renderer, Shader& shader);
 
+	bool Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, glm::ivec3& hitBlock, glm::ivec3& placeBlock);
+
+	void RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int wy, int wz);
+
 	static int WorldToChunk(int x);
 	static int WorldToLocal(int x);
 

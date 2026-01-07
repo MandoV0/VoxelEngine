@@ -23,6 +23,10 @@
 #include "world/World.h"
 #include "world/Skybox.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
+
 
 int main(void)
 {
@@ -53,8 +57,18 @@ int main(void)
 	{
 		std::cout << "Error!" << std::endl;
 	}
-
 	{
+
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+		ImGui::StyleColorsDark();
+
+		ImGui_ImplGlfw_InitForOpenGL(window, true);
+		ImGui_ImplOpenGL3_Init("#version 330");
+
+
 		glEnable(GL_DEPTH_TEST);
 		glCullFace(GL_BACK);
 		glFrontFace(GL_CCW);
@@ -113,12 +127,24 @@ int main(void)
 		unsigned int cubeMapID = Texture::LoadCubemap("res/textures/Cubemap_Sky_04-512x512.png");;
 		Skybox sb(cubeMapID);
 
+		double lastTime = glfwGetTime();
+		int nbFrames = 0;
+
 		while (!glfwWindowShouldClose(window))
 		{
 			float currentFrame = glfwGetTime();
 			float deltaTime = currentFrame - lastFrame;
 			lastFrame = currentFrame;
 			clickTimer -= deltaTime;
+
+			double currentTime = glfwGetTime();
+			nbFrames++;
+			if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
+				// printf and reset timer
+				printf("%f ms/frame\n", 1000.0 / double(nbFrames));
+				nbFrames = 0;
+				lastTime += 1.0;
+			}
 
 			renderer.Clear();
 
@@ -127,6 +153,10 @@ int main(void)
 			bool leftMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 			bool rightMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 			bool canClick = clickTimer <= 0.0f;
+
+			
+			glm::ivec3 hitBlock(0), placeBlock(0);
+
 
 			camera.ProcessKeyboard(input, deltaTime);
 			camera.ProcessMouse(input.GetMouseInput());
@@ -140,6 +170,24 @@ int main(void)
 			shader.SetUniform1i("u_Texture", 0);
 
 			world.Render(renderer, shader);
+
+			if (world.Raycast(camera.GetPosition(), camera.GetFront(), 15.0f, hitBlock, placeBlock)){
+				world.RenderBlockOutline(renderer, shader, hitBlock.x, hitBlock.y, hitBlock.z);
+
+				if (canClick)
+				{
+					if (leftMouseDown)
+					{
+						world.SetBlock(hitBlock.x, hitBlock.y, hitBlock.z, BlockType::AIR);
+						clickTimer = clickCooldown;
+					}
+					else if (rightMouseDown)
+					{
+						world.SetBlock(placeBlock.x, placeBlock.y, placeBlock.z, BlockType::GRASS);
+						clickTimer = clickCooldown;
+					}
+				}
+			}
 
 			// Render Skybox
 			sb.Draw(view, proj);
@@ -155,10 +203,30 @@ int main(void)
 			glDrawElements(GL_LINES, 4, GL_UNSIGNED_INT, nullptr);
 			glEnable(GL_DEPTH_TEST);
 
+			ImGui_ImplOpenGL3_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+
+			float cameraX = camera.GetPosition().x;
+			float cameraY = camera.GetPosition().y;
+			float cameraZ = camera.GetPosition().z;
+
+			ImGui::Begin("ImGui");
+			ImGui::SetWindowSize(ImVec2(300, 100), ImGuiCond_Always);
+			ImGui::Text("Camera Position: X %.2f | Y %.2f | Z %.2f \nBlock Position: X %d | Y %d | Z %d", cameraX, cameraY, cameraZ, hitBlock.x, hitBlock.y, hitBlock.z);
+			ImGui::End();
+
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 			glfwSwapBuffers(window);
 			glfwPollEvents();
 		}
 	}
+
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
 
 	glfwTerminate();
 	return 0;

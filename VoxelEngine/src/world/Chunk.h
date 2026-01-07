@@ -44,8 +44,6 @@ public:
 	void CreateBlock(std::vector<float>& vertices, std::vector<unsigned int>& indicies, int x, int y, int z);
 
 	BlockType GetBlockType(int x, int y, int z);
-	bool Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, glm::ivec3& hitBlock, glm::ivec3& placeBlock);
 
 	void SetSelectedBlock(bool hasBlock, glm::ivec3 position);
-	void RenderBlockOutline(Renderer& renderer, Shader& shader);
 };
