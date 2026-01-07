@@ -84,8 +84,9 @@ int main(void)
 		texture.Bind();
 		shader.SetUniform1i("u_Texture", 0);
 
+		const float fov = 85.0f;
 		glm::mat4 model = glm::mat4(1.0f);
-		glm::mat4 proj = glm::perspective(glm::radians(45.0f), 640.0f / 480.0f, 0.1f, 100.0f);
+		glm::mat4 proj = glm::perspective(glm::radians(fov), 1920.0f / 1080.0f, 0.1f, 1200.0f);
 
 		Input input(window);
 		Camera camera(glm::vec3(8.0f, 5.0f, 8.0f));
@@ -95,9 +96,11 @@ int main(void)
 
 		World world(1337);
 
-		for (int x = -1; x <= 1; x++)
+
+		const int renderDistance = 1;
+		for (int x = -renderDistance; x <= renderDistance; x++)
 		{
-			for (int z = -1; z <= 1; z++)
+			for (int z = -renderDistance; z <= renderDistance; z++)
 			{
 				world.GenerateChunk(x, z);
 			}

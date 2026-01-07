@@ -9,7 +9,7 @@ Chunk::Chunk(glm::ivec2 position) : m_ChunkPosition(position), m_VA(nullptr), m_
     for (int x = 0; x < WIDTH; x++)
         for (int y = 0; y < HEIGHT; y++)
             for (int z = 0; z < WIDTH; z++)
-                m_Blocks[x][y][z] = Block(BlockType::AIR);
+                m_Blocks.blocks[x][y][z] = Block(BlockType::AIR);
 }
 
 Chunk::~Chunk()
@@ -19,52 +19,276 @@ Chunk::~Chunk()
     delete m_IB;
 }
 
-void Chunk::GenerateMesh()
+BlockType Chunk::GetBlockTypeFromData(const ChunkData& data, int x, int y, int z)
 {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
+    if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT && z >= 0 && z < WIDTH)
+        return data.blocks[x][y][z].GetType();
+    return BlockType::AIR;
+}
+
+// TODO, check across chunk boundaries
+void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::vector<float>& vertices, std::vector<unsigned int>& indices, int x, int y, int z)
+{
+    // Air is not a real block so we skip it
+    BlockType blockType = GetBlockTypeFromData(data, x, y, z);
+    if (blockType == BlockType::AIR) return;
+
+    bool renderFront = !IsSolid(GetBlockTypeFromData(data, x, y, z + 1));
+    bool renderBack = !IsSolid(GetBlockTypeFromData(data, x, y, z - 1));
+    bool renderLeft = !IsSolid(GetBlockTypeFromData(data, x - 1, y, z));
+    bool renderRight = !IsSolid(GetBlockTypeFromData(data, x + 1, y, z));
+    bool renderTop = !IsSolid(GetBlockTypeFromData(data, x, y + 1, z));
+    bool renderBottom = !IsSolid(GetBlockTypeFromData(data, x, y - 1, z));
+
+    // Skip if all faces are hdden
+    if (!renderFront && !renderBack && !renderLeft &&
+        !renderRight && !renderTop && !renderBottom) {
+        return;
+    }
+
+    float tileSize = 1.0f / 32.0f;
+    int tileX = 0 + blockType - 1;
+    int tileY = 31;
+
+	float lightLevel = GetLightLevelAt(x, y, z, data);
+
+    // Face data: positions, UV, AO, LightLevel (experimental)
+    struct FaceVertex {
+        float x, y, z, u, v, ao, lightLevel;
+    };
+    constexpr int floatsPerVertex = 7;
+
+    // Front face (+Z)
+    if (renderFront) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex frontFace[] = {
+            {-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
+            { 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
+            { 0.5f,  0.5f, 0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            {-0.5f,  0.5f, 0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : frontFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+
+    // Back face (-Z)
+    if (renderBack) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex backFace[] = {
+            { 0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
+            {-0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
+            {-0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            { 0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : backFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+
+    // Left face (-X)
+    if (renderLeft) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex leftFace[] = {
+            {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
+            {-0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
+            {-0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            {-0.5f,  0.5f, -0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : leftFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+
+    // Right face (+X)
+    if (renderRight) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex rightFace[] = {
+            {0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
+            {0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
+            {0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            {0.5f,  0.5f,  0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : rightFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+
+    // Top face (+Y)
+    if (renderTop) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex topFace[] = {
+            {-0.5f, 0.5f,  0.5f, 0.0f, 0.0f, 0.0f, lightLevel},
+            { 0.5f, 0.5f,  0.5f, 1.0f, 0.0f, 0.0f, lightLevel},
+            { 0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            {-0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : topFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + -1 + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+
+    // Bottom face (-Y)
+    if (renderBottom) {
+        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        FaceVertex bottomFace[] = {
+            {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, lightLevel},
+            { 0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, lightLevel},
+            { 0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 0.0f, lightLevel},
+            {-0.5f, -0.5f,  0.5f, 0.0f, 1.0f, 0.0f, lightLevel}
+        };
+
+        for (const auto& vert : bottomFace) {
+            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
+            vertices.push_back(vert.y + y);
+            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
+            vertices.push_back((tileX + vert.u) * tileSize);
+            vertices.push_back((tileY + vert.v) * tileSize);
+            vertices.push_back(vert.ao);
+            vertices.push_back(vert.lightLevel);
+        }
+
+        indices.insert(indices.end(), {
+            baseIndex + 0, baseIndex + 1, baseIndex + 2,
+            baseIndex + 2, baseIndex + 3, baseIndex + 0
+            });
+    }
+}
+
+void Chunk::GenerateMeshWorker(Chunk* chunk, ChunkData data, glm::ivec2 position)
+{
+    std::vector<float> localVertices;
+    std::vector<unsigned int> localIndices;
+
+    // Use a conservative reserve to avoid reallocations
+    localVertices.reserve(10000);
+    localIndices.reserve(2000);
 
     for (int x = 0; x < WIDTH; x++)
         for (int y = 0; y < HEIGHT; y++)
             for (int z = 0; z < WIDTH; z++)
             {
-                if (GetBlockType(x, y, z) != BlockType::AIR)
-                    CreateBlock(vertices, indices, x, y, z);
+                if (GetBlockTypeFromData(data, x, y, z) != BlockType::AIR)
+                    CreateBlockWorker(data, position, localVertices, localIndices, x, y, z);
             }
 
-    std::cout << "Chunk mesh: verts = " << vertices.size()
-        << ", indices = " << indices.size() << std::endl;
-
-    if (vertices.empty() || indices.empty())
+    // Pass data back to the chunk
     {
-        delete m_VA;
-        delete m_VB;
-        delete m_IB;
-        m_VA = nullptr;
-        m_VB = nullptr;
-        m_IB = nullptr;
-        return;
+        std::lock_guard<std::mutex> lock(chunk->m_MeshMutex);
+        chunk->m_IntermediateVertices = std::move(localVertices);
+        chunk->m_IntermediateIndices = std::move(localIndices);
+        chunk->m_HasNewMesh = true;
+        chunk->m_IsGenerating = false;
+    }
+}
+
+void Chunk::Update()
+{
+    // 1. If we have a new mesh ready from the thread, upload it
+    if (m_HasNewMesh)
+    {
+        std::lock_guard<std::mutex> lock(m_MeshMutex);
+
+        delete m_VA; delete m_VB; delete m_IB;
+        m_VA = nullptr; m_VB = nullptr; m_IB = nullptr;
+
+        if (!m_IntermediateVertices.empty() && !m_IntermediateIndices.empty())
+        {
+            m_VA = new VertexArray();
+            m_VA->Bind();
+
+            m_VB = new VertexBuffer(m_IntermediateVertices.data(), m_IntermediateVertices.size() * sizeof(float));
+
+            VertexBufferLayout layout;
+            layout.Push<float>(3); // X, Y, Z
+            layout.Push<float>(2); // U, V
+            layout.Push<float>(1); // Ambient Occlusion
+			layout.Push<float>(1); // Light Level (experimental)
+
+            m_VA->AddBuffer(*m_VB, layout);
+            m_IB = new IndexBuffer(m_IntermediateIndices.data(), m_IntermediateIndices.size());
+
+            m_VA->Unbind();
+        }
+
+        m_IntermediateVertices.clear();
+        m_IntermediateIndices.clear();
+        m_HasNewMesh = false;
     }
 
-    delete m_VA;
-    delete m_VB;
-    delete m_IB;
+    // 2. If blocks changed and we aren't already working, start a thread
+    if (m_IsDirty && !m_IsGenerating)
+    {
+        m_IsGenerating = true;
+        m_IsDirty = false;
 
-    m_VA = new VertexArray();
-    m_VA->Bind();
+        // Create a copy of the data (Snapshot)
+        ChunkData dataSnapshot = m_Blocks;
 
-    m_VB = new VertexBuffer(vertices.data(), vertices.size() * sizeof(float));
-
-    VertexBufferLayout layout;
-	layout.Push<float>(3); // X, Y, Z
-	layout.Push<float>(2); // U, V
-	layout.Push<float>(1); // for per vertex Ambient Occlusion
-    
-    m_VA->AddBuffer(*m_VB, layout);
-
-    m_IB = new IndexBuffer(indices.data(), indices.size());
-
-    m_VA->Unbind();
+        // Launch the thread
+        std::thread worker(GenerateMeshWorker, this, dataSnapshot, m_ChunkPosition);
+        worker.detach();
+    }
 }
 
 void Chunk::Render(Renderer& renderer, Shader& shader)
@@ -74,105 +298,42 @@ void Chunk::Render(Renderer& renderer, Shader& shader)
     renderer.Draw(*m_VA, *m_IB, shader);
 }
 
-void Chunk::CreateBlock(std::vector<float>& vertices, std::vector<unsigned int>& indices, int x, int y, int z)
-{
-    static const float cubeVertices[] = {
-        // Front
-		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f, // Bottom Left
-		 0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f, // Bottom Right
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f, // Top Right
-		-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f, // Top Left
-
-        // Back
-         0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
-
-         // Left
-         -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
-         -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
-         -0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f,
-         -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
-
-         // Right
-          0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
-          0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 1.0f,
-          0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-          0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-
-          // Top
-          -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 0.0f,
-           0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f,
-           0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-          -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
-
-          // Bottom
-          -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 0.0f,
-           0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-           0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 0.0f,
-          -0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 0.0f
-    };
-
-    static const unsigned int cubeIndices[] = {
-         0,  1,  2,   2,  3,  0,   // Front
-         4,  5,  6,   6,  7,  4,   // Back
-         8,  9, 10,  10, 11,  8,   // Left
-        12, 13, 14,  14, 15, 12,   // Right
-        16, 17, 18,  18, 19, 16,   // Top
-        20, 21, 22,  22, 23, 20    // Bottom
-    };
-
-    constexpr int floatsPerVertex = 6;
-    constexpr int verticesPerBlock = 24;
-
-    unsigned int baseIndex = vertices.size() / floatsPerVertex;
-
-	float tileSize = 1.0f / 32.0f;
-	BlockType blockType = GetBlockType(x, y, z);
-	int tileX = 0 + blockType - 1;
-	int tileY = 31; // (0, 0) in OpenGL is the bottom-left, so to get the first texture we need to set Y to 31
-
-
-    for (int i = 0; i < verticesPerBlock; i++)
-    {
-        int v = i * floatsPerVertex;
-
-        vertices.push_back(cubeVertices[v + 0] + x + (m_ChunkPosition.x * WIDTH));
-        vertices.push_back(cubeVertices[v + 1] + y);                                
-        vertices.push_back(cubeVertices[v + 2] + z + (m_ChunkPosition.y * WIDTH));
-        
-        float u = (tileX + cubeVertices[v + 3]) * tileSize;
-        float v_coord = (tileY + cubeVertices[v + 4]) * tileSize;
-
-        //vertices.push_back(cubeVertices[v + 3]); // U
-        //vertices.push_back(cubeVertices[v + 4]); // V
-
-        vertices.push_back(u);
-        vertices.push_back(v_coord);
-
-		vertices.push_back(cubeVertices[v + 5]);
-    }
-
-    for (unsigned int idx : cubeIndices)
-    {
-        indices.push_back(baseIndex + idx);
-    }
-}
-
 BlockType Chunk::GetBlockType(int x, int y, int z)
 {
-    return m_Blocks[x][y][z].GetType();
+    return m_Blocks.blocks[x][y][z].GetType();
 }
 
 void Chunk::SetBlock(int x, int y, int z, BlockType type)
 {
     if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT && z >= 0 && z < WIDTH)
-        m_Blocks[x][y][z] = Block(type);
+    {
+        m_Blocks.blocks[x][y][z] = Block(type);
+        m_IsDirty = true;
+    }
 }
 
 void Chunk::SetSelectedBlock(bool hasBlock, glm::ivec3 position)
 {
     m_HasSelectedBlock = hasBlock;
     m_SelectedBlock = position;
+}
+
+float Chunk::GetLightLevelAt(int x, int y, int z, const ChunkData& data)
+{
+    for (int checkY = y + 1; checkY < HEIGHT; checkY++)
+    {
+        if (IsSolid(GetBlockTypeFromData(data, x, checkY, z)))
+            return 0.3f; // In shadow
+    }
+    return 1.0f; // Exposed to sky
+}
+
+bool Chunk::IsAir(int x, int y, int z)
+{
+    return GetBlockType(x, y, z) == BlockType::AIR;
+}
+
+bool Chunk::IsSolid(BlockType type)
+{
+    return type != BlockType::AIR;
 }

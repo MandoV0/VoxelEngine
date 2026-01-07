@@ -57,7 +57,7 @@ void World::GenerateChunk(int cx, int cz)
         }
     }
 
-    chunk.GenerateMesh();
+    //chunk.GenerateMesh();
 }
 
 BlockType World::GetBlock(int wx, int wy, int wz)
@@ -89,13 +89,14 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
         type
     );
 
-    chunk.GenerateMesh();
+    //chunk.GenerateMesh();
 }
 
 void World::Render(Renderer& renderer, Shader& shader)
 {
     for (auto& [coord, chunk] : m_Chunks)
     {
+		chunk->Update();
         chunk->Render(renderer, shader);
     }
 }
