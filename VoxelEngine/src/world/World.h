@@ -28,7 +28,10 @@ public:
 	Chunk* GetChunk(int cx, int cz);
 	Chunk& CreateChunk(int cx, int cz);
 
+	void UpdateChunksInRadius(int cx, int cz, int renderDistance);
 	void GenerateChunk(int cx, int cz);
+
+	void DropChunk(int cx, int cz);
 
 	BlockType GetBlock(int wx, int wy, int wz);
 	void SetBlock(int wx, int wy, int wz, BlockType type);
@@ -39,6 +42,9 @@ public:
 
 	void RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int wy, int wz);
 
+	void SpawnTree(int wx, int height, int wz);
+	float GetTreeNoise(int wx, int wz);
+
 	static int WorldToChunk(int x);
 	static int WorldToLocal(int x);
 
@@ -46,4 +52,9 @@ private:
 	int m_Seed;
 	FastNoiseLite m_Noise { m_Seed };
 	std::unordered_map<glm::ivec2, std::unique_ptr<Chunk> > m_Chunks;
+
+	// Raycasting cache
+	int lastcx = INT_MIN;
+	int lastcz = INT_MIN;
+	Chunk* raycastChunk = nullptr;
 };

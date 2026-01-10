@@ -323,7 +323,7 @@ float Chunk::GetLightLevelAt(int x, int y, int z, const ChunkData& data)
     for (int checkY = y + 1; checkY < HEIGHT; checkY++)
     {
         if (IsSolid(GetBlockTypeFromData(data, x, checkY, z)))
-            return 0.3f; // In shadow
+            return 1.0f; // In shadow
     }
     return 1.0f; // Exposed to sky
 }

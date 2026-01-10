@@ -32,7 +32,6 @@ int main(void)
 {
 	GLFWwindow* window;
 
-	/* Initialize the library */
 	if (!glfwInit())
 		return -1;
 
@@ -40,7 +39,6 @@ int main(void)
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	/* Create a windowed mode window and its OpenGL context */
 	window = glfwCreateWindow(1920, 1080, "Hello World", NULL, NULL);
 	if (!window)
 	{
@@ -48,10 +46,9 @@ int main(void)
 		return -1;
 	}
 
-	/* Make the window's context current */
 	glfwMakeContextCurrent(window);
 
-	glfwSwapInterval(1);
+	glfwSwapInterval(1); // Vsync
 
 	if (glewInit() != GLEW_OK)
 	{
@@ -90,14 +87,14 @@ int main(void)
 
 		Input input(window);
 		Camera camera(glm::vec3(8.0f, 5.0f, 8.0f));
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);	
 
 		float lastFrame = 0.0f;
 
 		World world(1337);
 
-
-		const int renderDistance = 1;
+		/*
+		const int renderDistance = 10;
 		for (int x = -renderDistance; x <= renderDistance; x++)
 		{
 			for (int z = -renderDistance; z <= renderDistance; z++)
@@ -105,24 +102,7 @@ int main(void)
 				world.GenerateChunk(x, z);
 			}
 		}
-
-		// Crosshair Setup
-		float crosshairVertices[] = {
-			-0.03f,  0.0f, 0.0f,  0.0f, 0.0f,
-			 0.03f,  0.0f, 0.0f,  1.0f, 1.0f,
-			 0.0f, -0.04f, 0.0f,  0.0f, 0.0f,
-			 0.0f,  0.04f, 0.0f,  1.0f, 1.0f
-		};
-		unsigned int crosshairIndices[] = { 0, 1, 2, 3 };
-
-
-		VertexArray chVA;
-		VertexBuffer chVB(crosshairVertices, sizeof(crosshairVertices));
-		VertexBufferLayout chLayout;
-		chLayout.Push<float>(3);
-		chLayout.Push<float>(2);
-		chVA.AddBuffer(chVB, chLayout);
-		IndexBuffer chIB(crosshairIndices, 4);
+		*/
 
 		float clickTimer = 0.0f;
 		float clickCooldown = 0.15f;
@@ -132,6 +112,8 @@ int main(void)
 
 		double lastTime = glfwGetTime();
 		int nbFrames = 0;
+
+		const int renderDistance = 3;
 
 		while (!glfwWindowShouldClose(window))
 		{
@@ -172,6 +154,11 @@ int main(void)
 			texture.Bind();
 			shader.SetUniform1i("u_Texture", 0);
 
+			world.UpdateChunksInRadius(
+				World::WorldToChunk(static_cast<int>(camera.GetPosition().x)),
+				World::WorldToChunk(static_cast<int>(camera.GetPosition().z)),
+				renderDistance
+			);
 			world.Render(renderer, shader);
 
 			if (world.Raycast(camera.GetPosition(), camera.GetFront(), 15.0f, hitBlock, placeBlock)){
@@ -195,16 +182,15 @@ int main(void)
 			// Render Skybox
 			sb.Draw(view, proj);
 
+			/*
 			// Render Crosshair
 			glDisable(GL_DEPTH_TEST);
 			shader.Bind();
 			glm::mat4 identity = glm::mat4(1.0f);
 			shader.SetUniformMat4f("u_MVP", identity);
 
-			chVA.Bind();
-			chIB.Bind();
-			glDrawElements(GL_LINES, 4, GL_UNSIGNED_INT, nullptr);
 			glEnable(GL_DEPTH_TEST);
+			*/
 
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();

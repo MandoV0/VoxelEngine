@@ -41,6 +41,7 @@ private:
 	std::atomic<bool> m_HasNewMesh{ false };
 	std::atomic<bool> m_IsDirty{ false };
 	std::atomic<bool> m_IsGenerating{ false };
+	bool m_IsTerrainGenerated{ false };
 
 	std::vector<float> m_IntermediateVertices;
 	std::vector<unsigned int> m_IntermediateIndices;
@@ -66,6 +67,9 @@ public:
 	void SetBlock(int x, int y, int z, BlockType blockType);
 	BlockType GetBlockType(int x, int y, int z);
 	void SetSelectedBlock(bool hasBlock, glm::ivec3 position);
+
+	bool IsTerrainGenerated() const { return m_IsTerrainGenerated; }
+	void SetTerrainGenerated(bool generated) { m_IsTerrainGenerated = generated; }
 
 	static float GetLightLevelAt(int x, int y, int z, const ChunkData& data);
 };

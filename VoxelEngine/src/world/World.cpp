@@ -28,6 +28,30 @@ Chunk& World::CreateChunk(int cx, int cz)
     return ref;
 }
 
+void World::UpdateChunksInRadius(int cx, int cz, int renderDistance)
+{
+	// Assume: We have the Camera Position in Chunk Coordinates (cx, cz)
+	// We have the render distance in chunks
+	// We only want to load all chunks in renderDistance around the camera meaning camera +- renderDistance in both directions.
+    // So each frame? check if all chunks in that area exist, if not create and generate them.
+	// For all other chunks just drop them from memory?????
+    // Kinda slow
+
+	for (int i = -renderDistance; i <= renderDistance; i++)
+    {
+        for (int j = -renderDistance; j <= renderDistance; j++)
+        {
+            int chunkX = cx + i;
+            int chunkZ = cz + j;
+            Chunk* chunk = GetChunk(chunkX, chunkZ);
+            if (!chunk || !chunk->IsTerrainGenerated())
+            {
+                GenerateChunk(chunkX, chunkZ);
+            }
+        }
+    }
+}
+
 void World::GenerateChunk(int cx, int cz)
 {
     Chunk& chunk = CreateChunk(cx, cz);
@@ -43,21 +67,37 @@ void World::GenerateChunk(int cx, int cz)
             int worldZ = cz * 16 + z;
 
             float noise = m_Noise.GetNoise((float)worldX, (float)worldZ);
-            int height = MIN_HEIGHT + noise * (MAX_HEIGHT - MIN_HEIGHT);
+            int height = MIN_HEIGHT + noise / 2 * (MAX_HEIGHT - MIN_HEIGHT);
 
             for (int y = 0; y < 128; y++)
             {
-                if (y > height)
-                    chunk.SetBlock(x, y, z, BlockType::AIR);
+                if (y > height) 
+                {
+                    if (chunk.GetBlockType(x, y, z) == BlockType::AIR)
+                        chunk.SetBlock(x, y, z, BlockType::AIR);
+                }
                 else if (y < 5)
                     chunk.SetBlock(x, y, z, BlockType::STONE);
                 else
                     chunk.SetBlock(x, y, z, BlockType::GRASS);
             }
+
+            // Trees
+			// TODO: Fix tree spawning so they dont spawn half in chunks (Step 1 Fixed) and dont spawn in clumps
+            if (GetTreeNoise(worldX, worldZ) > 0.98f)
+            {
+                if (height >= MIN_HEIGHT)
+                    SpawnTree(worldX, height + 1, worldZ);
+            }
         }
     }
+    chunk.SetTerrainGenerated(true);
+}
 
-    //chunk.GenerateMesh();
+void World::DropChunk(int cx, int cz)
+{
+    glm::ivec2 coord { cx, cz };
+	m_Chunks.erase(coord);
 }
 
 BlockType World::GetBlock(int wx, int wy, int wz)
@@ -88,8 +128,6 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
         WorldToLocal(wz),
         type
     );
-
-    //chunk.GenerateMesh();
 }
 
 void World::Render(Renderer& renderer, Shader& shader)
@@ -134,12 +172,24 @@ bool World::Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, gl
     int lastY = y;
     int lastZ = z;
 
+	// Cache chunks to avoid repeated lookups
+
     while (distanceTraveled <= maxDistance)
     {
-		Chunk* chunk = GetChunk(WorldToChunk(x), WorldToChunk(z)); // To traverse mutliple chunks, at each step we check in which Chunk the World Coordinates are.
-        if (chunk)
+		int cx = WorldToChunk(x);
+		int cz = WorldToChunk(z);
+
+		// Hash map lookup can be expensive, so we cache the last chunk we accessed.
+        if (!raycastChunk || cx != lastcx || cz != lastcz)
         {
-            BlockType type = chunk->GetBlockType(WorldToLocal(x), y, WorldToLocal(z));
+            raycastChunk = GetChunk(cx, cz);
+            lastcx = cx;
+			lastcz = cz;
+        }
+
+        if (raycastChunk)
+        {
+            BlockType type = raycastChunk->GetBlockType(WorldToLocal(x), y, WorldToLocal(z));
 
             if (type != BlockType::AIR)
             {
@@ -176,7 +226,6 @@ bool World::Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, gl
 
     return false;
 }
-
 
 void World::RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int wy, int wz)
 {
@@ -232,6 +281,45 @@ void World::RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int w
     outlineIB.Bind();
     shader.Bind();
     glDrawElements(GL_LINES, outlineIB.GetCount(), GL_UNSIGNED_INT, nullptr);
+}
+
+void World::SpawnTree(int worldX, int worldY, int worldZ) {
+    int trunkHeight = 4 + (rand() % 3);
+
+    for (int i = 0; i < trunkHeight; i++) {
+        SetBlock(worldX, worldY + i, worldZ, BlockType::WOOD);
+    }
+
+    // Generate the Layers
+    // From top to bottom
+    for (int ly = -2; ly <= 1; ly++) {
+        int yPos = worldY + trunkHeight + ly;
+        int radius = (ly > -1) ? 1 : 2;
+
+        for (int lx = -radius; lx <= radius; lx++) {
+            for (int lz = -radius; lz <= radius; lz++) {
+
+                if (lx == 0 && lz == 0 && ly < 0) continue;
+
+                // Corner Cutting
+                if (abs(lx) == radius && abs(lz) == radius) {
+                    if (radius > 1 || (rand() % 2 == 0)) continue;
+                }
+
+                if (GetBlock(worldX + lx, yPos, worldZ + lz) == BlockType::AIR) {
+                    SetBlock(worldX + lx, yPos, worldZ + lz, BlockType::LEAF);
+                }
+            }
+        }
+    }
+}
+
+float World::GetTreeNoise(int wx, int wz)
+{
+	// Replace this with a good noise function
+    unsigned int seed = 12345;
+    unsigned int h = seed ^ (wx * 1327144033) ^ (wz * 3575866297);
+    return (float)(h % 1000) / 1000.0f;
 }
 
 int World::WorldToChunk(int x)

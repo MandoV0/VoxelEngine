@@ -12,7 +12,7 @@ void Camera::ProcessKeyboard(Input& input, float deltaTime)
     float velocity = m_Speed * deltaTime;
     
 	if (input.IsKeyPressed(GLFW_KEY_LEFT_SHIFT))
-        velocity *= 9.0f; // Sprinting
+        velocity *= 35.0f; // Sprinting
 
     if (input.GetVerticalMoveInput() != 0)
         m_Position += m_Front * (float)input.GetVerticalMoveInput() * velocity;
