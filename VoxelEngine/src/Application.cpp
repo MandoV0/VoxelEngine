@@ -93,17 +93,6 @@ int main(void)
 
 		World world(1337);
 
-		/*
-		const int renderDistance = 10;
-		for (int x = -renderDistance; x <= renderDistance; x++)
-		{
-			for (int z = -renderDistance; z <= renderDistance; z++)
-			{
-				world.GenerateChunk(x, z);
-			}
-		}
-		*/
-
 		float clickTimer = 0.0f;
 		float clickCooldown = 0.15f;
 
@@ -111,7 +100,6 @@ int main(void)
 		Skybox sb(cubeMapID);
 
 		double lastTime = glfwGetTime();
-		int nbFrames = 0;
 
 		const int renderDistance = 3;
 
@@ -121,15 +109,7 @@ int main(void)
 			float deltaTime = currentFrame - lastFrame;
 			lastFrame = currentFrame;
 			clickTimer -= deltaTime;
-
-			double currentTime = glfwGetTime();
-			nbFrames++;
-			if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
-				// printf and reset timer
-				printf("%f ms/frame\n", 1000.0 / double(nbFrames));
-				nbFrames = 0;
-				lastTime += 1.0;
-			}
+			
 
 			renderer.Clear();
 
@@ -180,17 +160,10 @@ int main(void)
 			}
 
 			// Render Skybox
-			sb.Draw(view, proj);
-
-			/*
-			// Render Crosshair
-			glDisable(GL_DEPTH_TEST);
-			shader.Bind();
-			glm::mat4 identity = glm::mat4(1.0f);
-			shader.SetUniformMat4f("u_MVP", identity);
+			renderer.DrawSkybox(sb, view, proj);
 
 			glEnable(GL_DEPTH_TEST);
-			*/
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();

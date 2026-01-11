@@ -22,5 +22,9 @@ public:
 	Skybox(unsigned int cubemapID);
 	~Skybox();
 
-	void Draw(const glm::mat4& view, const glm::mat4&projection);
+	void Bind() const;
+
+	const VertexArray& GetVA() const { return m_VA; }
+	unsigned int GetID() const { return m_CubemapID; }
+	const Shader& GetShader() const { return m_Shader; }
 };

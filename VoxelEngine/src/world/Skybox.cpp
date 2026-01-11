@@ -39,23 +39,7 @@ Skybox::~Skybox()
 	delete m_VB;
 }
 
-
-
-void Skybox::Draw(const glm::mat4& view, const glm::mat4& projection)
+void Skybox::Bind() const
 {
-    GLCall(glDepthFunc(GL_LEQUAL));
-
-    m_Shader.Bind();
-
-    m_Shader.SetUniformMat4f("u_View", glm::mat4(glm::mat3(view)));
-    m_Shader.SetUniformMat4f("u_Proj", projection);
-
-    GLCall(glActiveTexture(GL_TEXTURE0));
-    GLCall(glBindTexture(GL_TEXTURE_CUBE_MAP, m_CubemapID));
-    m_Shader.SetUniform1i("skybox", 0);
-
-    m_VA.Bind();
-    GLCall(glDrawArrays(GL_TRIANGLES, 0, 36));
-
-    GLCall(glDepthFunc(GL_LESS));
+	m_Shader.Bind();
 }

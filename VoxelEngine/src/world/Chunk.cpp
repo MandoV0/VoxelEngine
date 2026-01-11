@@ -204,7 +204,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
             vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
             vertices.push_back((tileX + vert.u) * tileSize);
             vertices.push_back((tileY + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
+			vertices.push_back(vert.ao);
             vertices.push_back(vert.lightLevel);
         }
 
@@ -213,6 +213,8 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
             baseIndex + 2, baseIndex + 3, baseIndex + 0
             });
     }
+
+	// TODO: Only apply AO when their is a block below or below + front direction, Check for front, back left, right. But how would this work across chunk boundaries and performance wise.
 }
 
 void Chunk::GenerateMeshWorker(Chunk* chunk, ChunkData data, glm::ivec2 position)
@@ -335,5 +337,5 @@ bool Chunk::IsAir(int x, int y, int z)
 
 bool Chunk::IsSolid(BlockType type)
 {
-    return type != BlockType::AIR;
+	return type != BlockType::AIR && type != BlockType::LEAF; // Add all Transparent textures/blocks here so Solid faces adjacent to them are rendered
 }

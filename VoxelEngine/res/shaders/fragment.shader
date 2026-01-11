@@ -11,6 +11,8 @@ uniform sampler2D u_Texture;
 void main()
 {
 	color = texture( u_Texture, v_TexCoord );
+	if(color.a < 0.1)
+        discard;
 	color *= (1 - v_VertexAO * 0.3);
 	color *= v_LightLevel;
 }
