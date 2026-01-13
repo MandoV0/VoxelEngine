@@ -1,6 +1,8 @@
-#include "World.h"
+﻿#include "World.h"
 
 #include "../VertexBufferLayout.h"
+
+#include <algorithm>
 
 Chunk* World::GetChunk(int cx, int cz)
 {
@@ -56,41 +58,89 @@ void World::GenerateChunk(int cx, int cz)
 {
     Chunk& chunk = CreateChunk(cx, cz);
 
-    constexpr int MAX_HEIGHT = 76;
-    constexpr int MIN_HEIGHT = 50;
+	m_Noise.SetFractalType(FastNoiseLite::FractalType::FractalType_FBm);
+	m_Noise.SetFrequency(0.01f);
+    m_Noise.SetFractalLacunarity(2.0f);
+    m_Noise.SetFractalGain(0.5f);
 
-    for (int x = 0; x < 16; x++)
+    constexpr int CHUNK_SIZE = 16;
+    constexpr int CHUNK_HEIGHT = 128;
+    constexpr int MAX_HEIGHT = 64;
+    constexpr int MIN_HEIGHT = 40;
+    constexpr int SEA_LEVEL = 48;
+
+    int heightMap[CHUNK_SIZE][CHUNK_SIZE];
+
+    // Height
+    for (int x = 0; x < CHUNK_SIZE; x++)
     {
-        for (int z = 0; z < 16; z++)
+        for (int z = 0; z < CHUNK_SIZE; z++)
         {
-            int worldX = cx * 16 + x;
-            int worldZ = cz * 16 + z;
+            int worldX = cx * CHUNK_SIZE + x;
+            int worldZ = cz * CHUNK_SIZE + z;
 
             float noise = m_Noise.GetNoise((float)worldX, (float)worldZ);
-            int height = MIN_HEIGHT + noise / 2 * (MAX_HEIGHT - MIN_HEIGHT);
+            float n01 = (noise + 1.0f) * 0.5f;
 
-            for (int y = 0; y < 128; y++)
+            int height = MIN_HEIGHT + (int)(n01 * (MAX_HEIGHT - MIN_HEIGHT));
+
+            float weirdness = std::fabs(noise);
+            float pAndV = 1.0f - std::fabs((3.0f * weirdness) - 2.0f);
+            pAndV = std::clamp(pAndV, 0.0f, 1.0f);
+
+            height += (int)(pAndV * 15);
+            height = std::clamp(height, 1, CHUNK_HEIGHT - 1);
+
+            heightMap[x][z] = height;
+        }
+    }
+
+    // Terrain
+    for (int x = 0; x < CHUNK_SIZE; x++)
+    {
+        for (int z = 0; z < CHUNK_SIZE; z++)
+        {
+            int height = heightMap[x][z];
+
+            for (int y = 0; y <= height; y++)
             {
-                if (y > height) 
-                {
-                    if (chunk.GetBlockType(x, y, z) == BlockType::AIR)
-                        chunk.SetBlock(x, y, z, BlockType::AIR);
-                }
-                else if (y < 5)
-                    chunk.SetBlock(x, y, z, BlockType::STONE);
-                else
+                if (y == height)
                     chunk.SetBlock(x, y, z, BlockType::GRASS);
-            }
-
-            // Trees
-			// TODO: Fix tree spawning so they dont spawn half in chunks (Step 1 Fixed) and dont spawn in clumps
-            if (GetTreeNoise(worldX, worldZ) > 0.98f)
-            {
-                if (height >= MIN_HEIGHT)
-                    SpawnTree(worldX, height + 1, worldZ);
+                else if (y > height - 4)
+                    chunk.SetBlock(x, y, z, BlockType::DIRT);
+                else
+                    chunk.SetBlock(x, y, z, BlockType::STONE);
             }
         }
     }
+
+    // Water
+    for (int x = 0; x < CHUNK_SIZE; x++)
+    {
+        for (int z = 0; z < CHUNK_SIZE; z++)
+        {
+            int height = heightMap[x][z];
+
+            for (int y = height + 1; y <= SEA_LEVEL; y++)
+                chunk.SetBlock(x, y, z, BlockType::WATER);
+        }
+    }
+
+    // Tree pass
+    for (int x = 0; x < CHUNK_SIZE; x++)
+    {
+        for (int z = 0; z < CHUNK_SIZE; z++)
+        {
+            int worldX = cx * CHUNK_SIZE + x;
+            int worldZ = cz * CHUNK_SIZE + z;
+
+            int height = heightMap[x][z];
+
+            if (height > SEA_LEVEL && GetTreeNoise(worldX, worldZ) > 0.98f)
+                SpawnTree(worldX, height + 1, worldZ);
+        }
+    }
+
     chunk.SetTerrainGenerated(true);
 }
 

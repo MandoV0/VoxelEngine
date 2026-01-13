@@ -75,6 +75,9 @@
     <ClCompile Include="..\Dependencies\imgui\backends\imgui_impl_opengl3.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="src\Game.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Renderer.h">
@@ -150,6 +153,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="..\Dependencies\imgui\backends\imgui_impl_opengl3_loader.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Game.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

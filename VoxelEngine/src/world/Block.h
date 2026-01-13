@@ -7,7 +7,8 @@ enum BlockType
 	STONE = 2,
 	WOOD = 3,
 	LEAF = 4,
-	DIRT = 5,
+	WATER = 5,
+	DIRT = 6,
 };
 
 class Block

@@ -27,6 +27,9 @@ bool GLLogCall(const char* function, const char* file, int line);
 class Renderer
 {
 private:
+	unsigned int m_QuadVAO = 0;
+	unsigned int m_QuadVBO = 0;
+
 public:
     void Clear() const;
     void Draw(const VertexArray& va, const IndexBuffer& ib, const Shader& shader) const;
@@ -37,4 +40,6 @@ public:
 
 	void BeginLightingPass() const {};
 	void EndLightingPass() const {};
+
+	void RenderQuad();
 };
