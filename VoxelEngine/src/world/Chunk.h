@@ -20,6 +20,11 @@ public:
 		Block blocks[WIDTH][HEIGHT][WIDTH];
 	};
 
+	// To know if neighboring blocks are solid, we create a padded version of ChunkData so we avoid rendering these faces unnecessarily.
+	struct PaddedChunkData {
+		Block blocks[WIDTH + 2][HEIGHT][WIDTH + 2]; // +2 So we have a 1 block padding on each side in X and Z
+	};
+
 private:
 	/*
 	* Chunk Position in chunk space, NOT WORLD SPACE
@@ -32,6 +37,7 @@ private:
 	IndexBuffer* m_IB;
 
 	ChunkData m_Blocks;
+	PaddedChunkData m_PaddedBlocks;
 
 	bool m_HasSelectedBlock;
 	glm::ivec3 m_SelectedBlock;

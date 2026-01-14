@@ -141,7 +141,7 @@ void Game::Render()
     m_AtlasTexture->Bind();
     m_WorldShader->SetUniform1i("u_Texture", 0);
 
-    m_World->Render(*m_Renderer, *m_WorldShader);
+    m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera);
 
     if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock)) {
         m_World->RenderBlockOutline(*m_Renderer, *m_WorldShader, m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
@@ -159,8 +159,14 @@ void Game::RenderImGui()
     glm::vec3 cameraPos = m_Camera->GetPosition();
 
     ImGui::Begin("Debug Info");
-    ImGui::SetWindowSize(ImVec2(300, 100), ImGuiCond_Always);
+    ImGui::SetWindowSize(ImVec2(400, 500), ImGuiCond_Always);
     ImGui::Text("Camera Position: X %.2f | Y %.2f | Z %.2f", cameraPos.x, cameraPos.y, cameraPos.z);
+	ImGui::Text("Current Camera Forward: %.2f | %.2f | %.2f", m_Camera->GetFront().x, m_Camera->GetFront().y, m_Camera->GetFront().z);
+    ImGui::Text("Block Position: X %d | Y %d | Z %d", m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
+
+	ImGui::Text("Current Chunk Position: X %d | Z %d", World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().x)), World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().z)));
+
+
     ImGui::Text("Block Position: X %d | Y %d | Z %d", m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
     ImGui::Text("FPS: %.1f", 1.0f / m_DeltaTime);
     ImGui::End();

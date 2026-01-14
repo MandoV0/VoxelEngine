@@ -3,6 +3,7 @@
 #include "../VertexBufferLayout.h"
 
 #include <algorithm>
+#include <iostream>
 
 Chunk* World::GetChunk(int cx, int cz)
 {
@@ -46,6 +47,7 @@ void World::UpdateChunksInRadius(int cx, int cz, int renderDistance)
             int chunkX = cx + i;
             int chunkZ = cz + j;
             Chunk* chunk = GetChunk(chunkX, chunkZ);
+
             if (!chunk || !chunk->IsTerrainGenerated())
             {
                 GenerateChunk(chunkX, chunkZ);
@@ -180,11 +182,38 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
     );
 }
 
-void World::Render(Renderer& renderer, Shader& shader)
+void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
 {
+    float maxViewDistance = 12 * Chunk::WIDTH; // e.g., 12 chunks away
+
     for (auto& [coord, chunk] : m_Chunks)
     {
-		chunk->Update();
+        glm::vec3 camPosXZ = glm::vec3(camera.GetPosition().x, 0    , camera.GetPosition().z);
+        glm::vec3 camForwardXZ = glm::normalize(glm::vec3(camera.GetFront().x, 0, camera.GetFront().z));
+
+        float chunkCenterX = coord.x * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
+        float chunkCenterZ = coord.y * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
+
+        float minX = chunkCenterX - Chunk::WIDTH * 0.5f;
+        float maxX = chunkCenterX + Chunk::WIDTH * 0.5f;
+        float minZ = chunkCenterZ - Chunk::WIDTH * 0.5f;
+        float maxZ = chunkCenterZ + Chunk::WIDTH * 0.5f;
+
+        // Closest point method
+		// Instead of checking distance to all 4 corners, we can find the closest point of the chunk that can enter the camera.
+        float closestX = glm::clamp(camPosXZ.x, minX, maxX);
+        float closestZ = glm::clamp(camPosXZ.z, minZ, maxZ);
+        glm::vec3 closestPoint = glm::vec3(closestX, 0, closestZ);
+
+        float distSq = glm::distance(camPosXZ, closestPoint);
+
+		// The distance check is to avoid the current chunk we are being in not being rendered.
+        if (distSq > maxViewDistance && !isInFOV2D(camPosXZ, camForwardXZ, 85.f, closestPoint))
+        {
+            continue; // Skip chunk
+        }
+
+        chunk->Update();
         chunk->Render(renderer, shader);
     }
 }

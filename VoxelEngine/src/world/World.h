@@ -6,6 +6,7 @@
 #include "../vendor/FastNoiseLite.h"
 
 #include <functional>
+#include "../Camera.h"
 
 // ivec2 hash function for unordered_map, i cant get glms hash to work for some reason
 namespace std {
@@ -36,7 +37,7 @@ public:
 	BlockType GetBlock(int wx, int wy, int wz);
 	void SetBlock(int wx, int wy, int wz, BlockType type);
 
-	void Render(Renderer& renderer, Shader& shader);
+	void Render(Renderer& renderer, Shader& shader, Camera& camera);
 
 	bool Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, glm::ivec3& hitBlock, glm::ivec3& placeBlock);
 
@@ -47,6 +48,19 @@ public:
 
 	static int WorldToChunk(int x);
 	static int WorldToLocal(int x);
+
+	static bool isInFOV2D(const glm::vec3& cameraPos, const glm::vec3& cameraForward, float fovDegrees, const glm::vec3& point)
+	{
+		glm::vec3 camForwardXZ = glm::normalize(glm::vec3(cameraForward.x, 0.0f, cameraForward.z));
+		glm::vec3 toPointXZ = glm::normalize(glm::vec3(point.x - cameraPos.x, 0.0f, point.z - cameraPos.z));
+
+		float cosAngle = glm::dot(camForwardXZ, toPointXZ);
+		float halfFovRad = glm::radians(fovDegrees * 0.5f);
+		float cosHalfFov = cos(halfFovRad);
+
+		return cosAngle >= cosHalfFov;
+	}
+
 
 private:	
 	int m_Seed;
