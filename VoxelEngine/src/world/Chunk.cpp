@@ -55,9 +55,10 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         float x, y, z, u, v, ao, lightLevel;
     };
 
-    
-
-	renderTop = true;
+    // PRECOMPUTE
+    float wx = x + chunkPos.x * WIDTH;
+    float wy = y;
+    float wz = z + chunkPos.y * WIDTH;
 
     // Front face (+Z)
     if (renderFront) {
@@ -70,7 +71,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : frontFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -78,7 +79,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
@@ -100,7 +101,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : backFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -108,7 +109,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
@@ -130,7 +131,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : leftFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -138,7 +139,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
@@ -160,7 +161,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : rightFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -168,7 +169,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
@@ -190,7 +191,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : topFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -198,7 +199,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + -1 + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
@@ -220,7 +221,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : bottomFace) {
-            vertices.push_back({
+            vertices.emplace_back(
                     vert.x + x + chunkPos.x * WIDTH,
                     vert.y + y,
                     vert.z + z + chunkPos.y * WIDTH,
@@ -228,7 +229,7 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
                     (tileY + vert.v) * tileSize,
                     vert.ao,
                     vert.lightLevel
-                });
+                );
         }
 
         indices.push_back(baseIndex + 0);
