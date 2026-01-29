@@ -6,10 +6,7 @@
 
 Chunk::Chunk(glm::ivec2 position) : m_ChunkPosition(position), m_VA(nullptr), m_VB(nullptr), m_IB(nullptr)
 {
-    for (int x = 0; x < WIDTH; x++)
-        for (int y = 0; y < HEIGHT; y++)
-            for (int z = 0; z < WIDTH; z++)
-                m_Blocks.blocks[x][y][z] = Block(BlockType::AIR);
+    
 }
 
 Chunk::~Chunk()
@@ -27,7 +24,7 @@ BlockType Chunk::GetBlockTypeFromData(const ChunkData& data, int x, int y, int z
 }
 
 // TODO, check across chunk boundaries
-void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::vector<float>& vertices, std::vector<unsigned int>& indices, int x, int y, int z)
+void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, int x, int y, int z)
 {
     // Air is not a real block so we skip it
     BlockType blockType = GetBlockTypeFromData(data, x, y, z);
@@ -50,17 +47,21 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
     int tileX = 0 + blockType - 1;
     int tileY = 31;
 
-	float lightLevel = GetLightLevelAt(x, y, z, data);
+	// float lightLevel = GetLightLevelAt(x, y, z, data);
+    float lightLevel = 1;
 
     // Face data: positions, UV, AO, LightLevel (experimental)
     struct FaceVertex {
         float x, y, z, u, v, ao, lightLevel;
     };
-    constexpr int floatsPerVertex = 7;
+
+    
+
+	renderTop = true;
 
     // Front face (+Z)
     if (renderFront) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex frontFace[] = {
             {-0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
             { 0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
@@ -69,24 +70,28 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : frontFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
     // Back face (-Z)
     if (renderBack) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex backFace[] = {
             { 0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
             {-0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
@@ -95,24 +100,28 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : backFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
     // Left face (-X)
     if (renderLeft) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex leftFace[] = {
             {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
             {-0.5f, -0.5f,  0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
@@ -121,24 +130,28 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : leftFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
     // Right face (+X)
     if (renderRight) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex rightFace[] = {
             {0.5f, -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, lightLevel},
             {0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 1.0f, lightLevel},
@@ -147,24 +160,28 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : rightFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
     // Top face (+Y)
     if (renderTop) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex topFace[] = {
             {-0.5f, 0.5f,  0.5f, 0.0f, 0.0f, 0.0f, lightLevel},
             { 0.5f, 0.5f,  0.5f, 1.0f, 0.0f, 0.0f, lightLevel},
@@ -173,24 +190,28 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : topFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + -1 + vert.v) * tileSize);
-            vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + -1 + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
     // Bottom face (-Y)
     if (renderBottom) {
-        unsigned int baseIndex = vertices.size() / floatsPerVertex;
+        unsigned int baseIndex = static_cast<unsigned int>(vertices.size());
         FaceVertex bottomFace[] = {
             {-0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, lightLevel},
             { 0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, lightLevel},
@@ -199,19 +220,23 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
         };
 
         for (const auto& vert : bottomFace) {
-            vertices.push_back(vert.x + x + (chunkPos.x * WIDTH));
-            vertices.push_back(vert.y + y);
-            vertices.push_back(vert.z + z + (chunkPos.y * WIDTH));
-            vertices.push_back((tileX + vert.u) * tileSize);
-            vertices.push_back((tileY + vert.v) * tileSize);
-			vertices.push_back(vert.ao);
-            vertices.push_back(vert.lightLevel);
+            vertices.push_back({
+                    vert.x + x + chunkPos.x * WIDTH,
+                    vert.y + y,
+                    vert.z + z + chunkPos.y * WIDTH,
+                    (tileX + vert.u) * tileSize,
+                    (tileY + vert.v) * tileSize,
+                    vert.ao,
+                    vert.lightLevel
+                });
         }
 
-        indices.insert(indices.end(), {
-            baseIndex + 0, baseIndex + 1, baseIndex + 2,
-            baseIndex + 2, baseIndex + 3, baseIndex + 0
-            });
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 0);
     }
 
 	// TODO: Only apply AO when their is a block below or below + front direction, Check for front, back left, right. But how would this work across chunk boundaries and performance wise.
@@ -219,12 +244,12 @@ void Chunk::CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos, std::v
 
 void Chunk::GenerateMeshWorker(Chunk* chunk, ChunkData data, glm::ivec2 position)
 {
-    std::vector<float> localVertices;
+    std::vector<Vertex> localVertices;
     std::vector<unsigned int> localIndices;
 
     // Use a conservative reserve to avoid reallocations
-    localVertices.reserve(10000);
-    localIndices.reserve(2000);
+    localVertices.reserve(WIDTH * HEIGHT * WIDTH * 6);
+    localIndices.reserve(WIDTH * HEIGHT * WIDTH * 6);
 
     for (int x = 0; x < WIDTH; x++)
         for (int y = 0; y < HEIGHT; y++)
@@ -259,7 +284,7 @@ void Chunk::Update()
             m_VA = new VertexArray();
             m_VA->Bind();
 
-            m_VB = new VertexBuffer(m_IntermediateVertices.data(), m_IntermediateVertices.size() * sizeof(float));
+            m_VB = new VertexBuffer(m_IntermediateVertices.data(), m_IntermediateVertices.size() * sizeof(Vertex));
 
             VertexBufferLayout layout;
             layout.Push<float>(3); // X, Y, Z

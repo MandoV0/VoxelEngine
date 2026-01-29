@@ -5,6 +5,17 @@
 #include <algorithm>
 #include <iostream>
 
+World::World(int seed)
+{
+	m_Seed = seed;
+	InitThreadPool();
+}
+
+World::~World()
+{
+	ShutdownThreadPool();
+}
+
 Chunk* World::GetChunk(int cx, int cz)
 {
     glm::ivec2 coord { cx, cz };
@@ -46,104 +57,77 @@ void World::UpdateChunksInRadius(int cx, int cz, int renderDistance)
         {
             int chunkX = cx + i;
             int chunkZ = cz + j;
+
             Chunk* chunk = GetChunk(chunkX, chunkZ);
 
-            if (!chunk || !chunk->IsTerrainGenerated())
+
+            if (!chunk)
             {
                 GenerateChunk(chunkX, chunkZ);
+            }
+            else if (chunk->IsTerrainGenerated()) {
+				// Only update chunks when dirty
+				chunk->Update();
             }
         }
     }
 }
 
-void World::GenerateChunk(int cx, int cz)
-{
-    Chunk& chunk = CreateChunk(cx, cz);
+void World::GenerateChunk(int cx, int cz) {
+    auto chunkPtr = std::make_shared<Chunk>(glm::ivec2(cx, cz));
+    m_Chunks[glm::ivec2(cx, cz)] = chunkPtr;
 
-	m_Noise.SetFractalType(FastNoiseLite::FractalType::FractalType_FBm);
-	m_Noise.SetFrequency(0.01f);
-    m_Noise.SetFractalLacunarity(2.0f);
-    m_Noise.SetFractalGain(0.5f);
+    EnqueueJob([this, cx, cz, chunkPtr]() {
+		// Unique for each Thread so it is thread safe
+        FastNoiseLite noise(m_Seed);
+        noise.SetFractalType(FastNoiseLite::FractalType::FractalType_FBm);
+        noise.SetFrequency(0.01f);
+        noise.SetFractalLacunarity(2.0f);
+        noise.SetFractalGain(0.5f);
 
-    constexpr int CHUNK_SIZE = 16;
-    constexpr int CHUNK_HEIGHT = 128;
-    constexpr int MAX_HEIGHT = 64;
-    constexpr int MIN_HEIGHT = 40;
-    constexpr int SEA_LEVEL = 48;
+        constexpr int CHUNK_SIZE = 16;
+        constexpr int CHUNK_HEIGHT = 128;
+        constexpr int MAX_HEIGHT = 64;
+        constexpr int MIN_HEIGHT = 40;
+        constexpr int SEA_LEVEL = 48;
 
-    int heightMap[CHUNK_SIZE][CHUNK_SIZE];
+        int heightMap[CHUNK_SIZE][CHUNK_SIZE];
+        
+        // Height generation
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int worldX = cx * CHUNK_SIZE + x;
+                int worldZ = cz * CHUNK_SIZE + z;
+                float noiseVal = noise.GetNoise((float)worldX, (float)worldZ);
+                float n01 = (noiseVal + 1.0f) * 0.5f;
+                int height = MIN_HEIGHT + (int)(n01 * (MAX_HEIGHT - MIN_HEIGHT));
 
-    // Height
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-        {
-            int worldX = cx * CHUNK_SIZE + x;
-            int worldZ = cz * CHUNK_SIZE + z;
-
-            float noise = m_Noise.GetNoise((float)worldX, (float)worldZ);
-            float n01 = (noise + 1.0f) * 0.5f;
-
-            int height = MIN_HEIGHT + (int)(n01 * (MAX_HEIGHT - MIN_HEIGHT));
-
-            float weirdness = std::fabs(noise);
-            float pAndV = 1.0f - std::fabs((3.0f * weirdness) - 2.0f);
-            pAndV = std::clamp(pAndV, 0.0f, 1.0f);
-
-            height += (int)(pAndV * 15);
-            height = std::clamp(height, 1, CHUNK_HEIGHT - 1);
-
-            heightMap[x][z] = height;
-        }
-    }
-
-    // Terrain
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-        {
-            int height = heightMap[x][z];
-
-            for (int y = 0; y <= height; y++)
-            {
-                if (y == height)
-                    chunk.SetBlock(x, y, z, BlockType::GRASS);
-                else if (y > height - 4)
-                    chunk.SetBlock(x, y, z, BlockType::DIRT);
-                else
-                    chunk.SetBlock(x, y, z, BlockType::STONE);
+                float weirdness = std::fabs(noiseVal);
+                float pAndV = 1.0f - std::fabs((3.0f * weirdness) - 2.0f);
+                pAndV = std::clamp(pAndV, 0.0f, 1.0f);
+                height += (int)(pAndV * 15);
+                height = std::clamp(height, 1, CHUNK_HEIGHT - 1);
+                heightMap[x][z] = height;
             }
         }
-    }
 
-    // Water
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-        {
-            int height = heightMap[x][z];
-
-            for (int y = height + 1; y <= SEA_LEVEL; y++)
-                chunk.SetBlock(x, y, z, BlockType::WATER);
+        // Terrain blocks
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int height = heightMap[x][z];
+                for (int y = 0; y <= height; y++) {
+                    if (y == height)
+                        chunkPtr->SetBlock(x, y, z, BlockType::GRASS);
+                    else if (y > height - 4)
+                        chunkPtr->SetBlock(x, y, z, BlockType::DIRT);
+                    else
+                        chunkPtr->SetBlock(x, y, z, BlockType::STONE);
+                }
+            }
         }
-    }
 
-    // Tree pass
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int z = 0; z < CHUNK_SIZE; z++)
-        {
-            int worldX = cx * CHUNK_SIZE + x;
-            int worldZ = cz * CHUNK_SIZE + z;
-
-            int height = heightMap[x][z];
-
-            if (height > SEA_LEVEL && GetTreeNoise(worldX, worldZ) > 0.98f)
-                SpawnTree(worldX, height + 1, worldZ);
-        }
-    }
-
-    chunk.SetTerrainGenerated(true);
+        chunkPtr->SetTerrainGenerated(true);
+        });
 }
 
 void World::DropChunk(int cx, int cz)
@@ -185,35 +169,40 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
 void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
 {
     float maxViewDistance = 12 * Chunk::WIDTH; // e.g., 12 chunks away
+	bool frustumCulling = false;
 
     for (auto& [coord, chunk] : m_Chunks)
     {
-        glm::vec3 camPosXZ = glm::vec3(camera.GetPosition().x, 0    , camera.GetPosition().z);
-        glm::vec3 camForwardXZ = glm::normalize(glm::vec3(camera.GetFront().x, 0, camera.GetFront().z));
 
-        float chunkCenterX = coord.x * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
-        float chunkCenterZ = coord.y * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
-
-        float minX = chunkCenterX - Chunk::WIDTH * 0.5f;
-        float maxX = chunkCenterX + Chunk::WIDTH * 0.5f;
-        float minZ = chunkCenterZ - Chunk::WIDTH * 0.5f;
-        float maxZ = chunkCenterZ + Chunk::WIDTH * 0.5f;
-
-        // Closest point method
-		// Instead of checking distance to all 4 corners, we can find the closest point of the chunk that can enter the camera.
-        float closestX = glm::clamp(camPosXZ.x, minX, maxX);
-        float closestZ = glm::clamp(camPosXZ.z, minZ, maxZ);
-        glm::vec3 closestPoint = glm::vec3(closestX, 0, closestZ);
-
-        float distSq = glm::distance(camPosXZ, closestPoint);
-
-		// The distance check is to avoid the current chunk we are being in not being rendered.
-        if (distSq > maxViewDistance && !isInFOV2D(camPosXZ, camForwardXZ, 85.f, closestPoint))
+        // Broken when high up in the air????
+        if (frustumCulling)
         {
-            continue; // Skip chunk
+            glm::vec3 camPosXZ = glm::vec3(camera.GetPosition().x, 0, camera.GetPosition().z);
+            glm::vec3 camForwardXZ = glm::normalize(glm::vec3(camera.GetFront().x, 0, camera.GetFront().z));
+
+            float chunkCenterX = coord.x * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
+            float chunkCenterZ = coord.y * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
+
+            float minX = chunkCenterX - Chunk::WIDTH * 0.5f;
+            float maxX = chunkCenterX + Chunk::WIDTH * 0.5f;
+            float minZ = chunkCenterZ - Chunk::WIDTH * 0.5f;
+            float maxZ = chunkCenterZ + Chunk::WIDTH * 0.5f;
+
+            // Closest point method
+		    // Instead of checking distance to all 4 corners, we can find the closest point of the chunk that can enter the camera.
+            float closestX = glm::clamp(camPosXZ.x, minX, maxX);
+            float closestZ = glm::clamp(camPosXZ.z, minZ, maxZ);
+            glm::vec3 closestPoint = glm::vec3(closestX, 0, closestZ);
+
+            float distSq = glm::distance(camPosXZ, closestPoint);
+
+		    // The distance check is to avoid the current chunk we are being in not being rendered.
+            if (distSq > maxViewDistance && !isInFOV2D(camPosXZ, camForwardXZ, 85.f, closestPoint))
+            {
+                continue; // Skip chunk
+            }
         }
 
-        chunk->Update();
         chunk->Render(renderer, shader);
     }
 }
@@ -410,4 +399,57 @@ int World::WorldToLocal(int x)
 {
     int r = x % 16;
     return r < 0 ? r + 16 : r;
+}
+
+void World::InitThreadPool(int numThreads)
+{
+	for (int i = 0; i < numThreads; i++)
+    {
+        m_WorkerThreads.emplace_back(&World::WorkerThreadLoop, this);
+    }
+}
+
+void World::WorkerThreadLoop()
+{
+    while (true)
+    {
+        std::function<void()> job;
+        {
+			std::unique_lock<std::mutex> lock(m_QueueMutex);
+			m_Condition.wait(lock, [this]
+            {
+                    return m_ShutDownThreadPool || !m_JobQueue.empty();
+            });
+
+            if (m_ShutDownThreadPool && m_JobQueue.empty())
+				return;
+
+			job = std::move(m_JobQueue.front());
+			m_JobQueue.pop();
+        }
+        job();
+	}
+}
+
+void World::ShutdownThreadPool() {
+    {
+        std::unique_lock<std::mutex> lock(m_QueueMutex);
+        m_ShutDownThreadPool = true;
+    }
+    m_Condition.notify_all();
+
+    for (auto& thread : m_WorkerThreads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+}
+
+void World::EnqueueJob(std::function<void()> job)
+{
+    {
+        std::unique_lock<std::mutex> lock(m_QueueMutex);
+        m_JobQueue.push(std::move(job));
+    }
+    m_Condition.notify_one();
 }

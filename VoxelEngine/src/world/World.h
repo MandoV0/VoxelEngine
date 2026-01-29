@@ -7,6 +7,12 @@
 
 #include <functional>
 #include "../Camera.h"
+#include <queue>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <unordered_map>
 
 // ivec2 hash function for unordered_map, i cant get glms hash to work for some reason
 namespace std {
@@ -24,7 +30,8 @@ namespace std {
 class World
 {
 public:
-	World(int seed) : m_Seed(seed) {}
+	World(int seed);
+	~World();
 
 	Chunk* GetChunk(int cx, int cz);
 	Chunk& CreateChunk(int cx, int cz);
@@ -65,10 +72,26 @@ public:
 private:	
 	int m_Seed;
 	FastNoiseLite m_Noise { m_Seed };
-	std::unordered_map<glm::ivec2, std::unique_ptr<Chunk> > m_Chunks;
+	std::unordered_map<glm::ivec2, std::shared_ptr<Chunk>> m_Chunks;
 
 	// Raycasting cache
 	int lastcx = INT_MIN;
 	int lastcz = INT_MIN;
 	Chunk* raycastChunk = nullptr;
+
+	std::queue<glm::ivec2> m_ChunkGenQueue;
+
+	// Thread Pool
+	std::vector<std::thread> m_WorkerThreads;
+	std::queue<std::function<void()>> m_JobQueue;
+	std::mutex m_QueueMutex;
+	std::condition_variable m_Condition;
+	std::atomic<bool> m_ShutDownThreadPool{ false };
+
+	void InitThreadPool(int numThreads = 4);
+	void ShutdownThreadPool();
+	void WorkerThreadLoop();
+	void EnqueueJob(std::function<void()> job);
+	
+
 };

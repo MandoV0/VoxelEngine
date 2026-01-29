@@ -45,9 +45,6 @@
     <ClCompile Include="src\Camera.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="src\world\Chunk.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
     <ClCompile Include="src\world\World.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
@@ -76,6 +73,9 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="src\Game.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="src\world\Chunk.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

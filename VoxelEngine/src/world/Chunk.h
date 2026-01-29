@@ -10,6 +10,13 @@
 #include "../IndexBuffer.h"
 #include "../Renderer.h"
 
+struct Vertex {
+	float x, y, z;
+	float u, v;
+	float ao;
+	float light;
+};
+
 class Chunk
 {
 public:
@@ -49,7 +56,7 @@ private:
 	std::atomic<bool> m_IsGenerating{ false };
 	bool m_IsTerrainGenerated{ false };
 
-	std::vector<float> m_IntermediateVertices;
+	std::vector<Vertex> m_IntermediateVertices;
 	std::vector<unsigned int> m_IntermediateIndices;
 
 	// Helper methods
@@ -58,7 +65,7 @@ private:
 	static BlockType GetBlockTypeFromData(const ChunkData& data, int x, int y, int z);
 
 	static void CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos,
-		std::vector<float>& vertices,
+		std::vector<Vertex>& vertices,
 		std::vector<unsigned int>& indices,
 		int x, int y, int z);
 
