@@ -58,10 +58,14 @@ void Game::Init()
 
     InitImGui();
 
+    float aspect = static_cast<float>(m_Width) / static_cast<float>(m_Height); // Calculates the Aspect Ratio so the Screen is not stretched.
+    m_Projection = glm::perspective(glm::radians(m_FOV), aspect, 0.1f, 1200.0f);
+    m_Model = glm::mat4(1.0f);
+
     // Create core systems
     m_Renderer = std::make_unique<Renderer>();
     m_Input = std::make_unique<Input>(m_Window);
-    m_Camera = std::make_unique<Camera>(glm::vec3(8.0f, 5.0f, 8.0f));
+    m_Camera = std::make_unique<Camera>(glm::vec3(8.0f, 5.0f, 8.0f), glm::vec3(0, 1, 0), -90.0f, 0.0f, aspect, m_FOV);
     m_World = std::make_unique<World>(1337);
 
     m_WorldShader = std::make_unique<Shader>("res/shaders/vertex.shader", "res/shaders/fragment.shader");
@@ -69,10 +73,6 @@ void Game::Init()
 
     unsigned int cubeMapID = Texture::LoadCubemap("res/textures/Cubemap_Sky_04-512x512.png");
     m_Skybox = std::make_unique<Skybox>(cubeMapID);
-
-	float aspect = static_cast<float>(m_Width) / static_cast<float>(m_Height); // Calculates the Aspect Ratio so the Screen is not stretched.
-    m_Projection = glm::perspective(glm::radians(m_FOV), aspect, 0.1f, 1200.0f);
-    m_Model = glm::mat4(1.0f);
 
 	glfwSetInputMode(m_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // Locks Cursor in Place. TODO: unlock on ESC
 }
@@ -92,13 +92,28 @@ void Game::ProcessInput(float deltaTime)
 {
     m_Input->UpdateMouse();
     m_Camera->ProcessKeyboard(*m_Input, deltaTime);
-    m_Camera->ProcessMouse(m_Input->GetMouseInput());
+
+    if (m_CursorLocked)
+        m_Camera->ProcessMouse(m_Input->GetMouseInput());
 
     m_ClickTimer -= deltaTime;
 
     bool leftMouseDown = glfwGetMouseButton(m_Window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     bool rightMouseDown = glfwGetMouseButton(m_Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
     bool canClick = m_ClickTimer <= 0.0f;
+
+    static bool escWasDown = false;
+
+    bool escDown = glfwGetKey(m_Window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+
+    if (escDown && !escWasDown)
+    {
+        m_CursorLocked = !m_CursorLocked;
+
+        glfwSetInputMode(m_Window, GLFW_CURSOR, m_CursorLocked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    }
+
+    escWasDown = escDown;
 
     if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock))
     {
@@ -120,10 +135,10 @@ void Game::ProcessInput(float deltaTime)
 
 void Game::Update(float deltaTime)
 {
-    m_World->UpdateChunksInRadius(
+    m_World->UpdateChunksInRadius(  
         World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().x)),
         World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().z)),
-        m_RenderDistance
+        m_RenderDistance * 3
     );
 }
 
@@ -143,7 +158,8 @@ void Game::Render()
 
     m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera);
 
-    if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock)) {
+    if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock))
+    {
         m_World->RenderBlockOutline(*m_Renderer, *m_WorldShader, m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
     }
 
@@ -165,6 +181,8 @@ void Game::RenderImGui()
     ImGui::Text("Block Position: X %d | Y %d | Z %d", m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
 
 	ImGui::Text("Current Chunk Position: X %d | Z %d", World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().x)), World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().z)));
+
+    ImGui::Checkbox("Frustum Culling", &m_World->frustumCulling);
 
 
     ImGui::Text("Block Position: X %d | Y %d | Z %d", m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);

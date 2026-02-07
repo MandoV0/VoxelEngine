@@ -482,8 +482,8 @@ void Chunk::GenerateMeshWorker(Chunk* chunk, const PaddedChunkData data, glm::iv
     std::vector<unsigned int> localIndices;
 
     // Use a conservative reserve to avoid reallocations
-    localVertices.reserve(WIDTH * HEIGHT * WIDTH * 6);
-    localIndices.reserve(WIDTH * HEIGHT * WIDTH * 6);
+    localVertices.reserve(8192);
+    localIndices.reserve(12288);
 
     for (int x = 0; x < WIDTH; x++)
         for (int y = 0; y < HEIGHT; y++)
@@ -537,90 +537,61 @@ void Chunk::Update(World* world)
         m_HasNewMesh = false;
     }
 
-    // If blocks changed and we arent already working, start a thread
     if (m_IsDirty && !m_IsGenerating)
     {
-        Chunk* leftN = world->GetChunk(m_ChunkPosition.x - 1, m_ChunkPosition.y);
-        Chunk* rightN = world->GetChunk(m_ChunkPosition.x + 1, m_ChunkPosition.y);
-        Chunk* backN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y - 1);
-        Chunk* frontN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y + 1);
-
-        bool allNeighborsReady =
-            (!leftN || leftN->GetIsFullyLoaded()) &&
-            (!rightN || rightN->GetIsFullyLoaded()) &&
-            (!backN || backN->GetIsFullyLoaded()) &&
-            (!frontN || frontN->GetIsFullyLoaded());
-
-        if (!allNeighborsReady) {
-            return;
-        }
-
         m_IsGenerating = true;
         m_IsDirty = false;
 
-        // Create a copy of the data (Snapshot)
-        ChunkData dataSnapshot = m_Blocks;
+        glm::ivec2 pos = m_ChunkPosition;
+        world->EnqueueJob([this, world, pos]() {
+            // Create padded data on worker thread instead of main thread.
+            // Basically removes all stutter.
+            Chunk* leftN = world->GetChunk(pos.x - 1, pos.y);
+            Chunk* rightN = world->GetChunk(pos.x + 1, pos.y);
+            Chunk* backN = world->GetChunk(pos.x, pos.y - 1);
+            Chunk* frontN = world->GetChunk(pos.x, pos.y + 1);
 
-        /* TODO:
-        * Store World*.
-        * Create PadedChunkData from dataSnapshot and neighboring chunks.
-        * We basically place our Chunk in the middle and one block padding around it.
-        * If no neigbhboring chunk exists, we just leave it as AIR.
-        * Using World GetChunk
-        *
-        * Maybe also propagate dirty to neighboring chunks so they also update their meshes if needed.
-        * So in World SetBlock if block is placed at edge, update the neigbhboring chunk too/mark as dirty.
-        */
+            // Copy data
+            ChunkData dataSnapshot = m_Blocks;
+            PaddedChunkData paddedData{};
 
-        PaddedChunkData paddedData;
-
-        // Fill Center
-        for (int x = 0; x < WIDTH; x++) {
-            for (int y = 0; y < HEIGHT; y++) {
-                for (int z = 0; z < WIDTH; z++) {
-                    paddedData.blocks[x + 1][y][z + 1] = dataSnapshot.blocks[x][y][z];
+            // Fill Center
+            for (int x = 0; x < WIDTH; x++) {
+                for (int y = 0; y < HEIGHT; y++) {
+                    for (int z = 0; z < WIDTH; z++) {
+                        paddedData.blocks[x + 1][y][z + 1] = dataSnapshot.blocks[x][y][z];
+                    }
                 }
             }
-        }
 
-        // Neigbor data
-        if (leftN) {
-            for (int y = 0; y < HEIGHT; y++)
-                for (int z = 0; z < WIDTH; z++)
-                    paddedData.blocks[0][y][z + 1] = leftN->m_Blocks.blocks[WIDTH - 1][y][z];
-        }
-
-        if (rightN) {
-            for (int y = 0; y < HEIGHT; y++)
-                for (int z = 0; z < WIDTH; z++)
-                    paddedData.blocks[WIDTH + 1][y][z + 1] = rightN->m_Blocks.blocks[0][y][z];
-        }
-
-        if (backN) {
-            for (int x = 0; x < WIDTH; x++)
+            // Neigbor data
+            if (leftN) {
                 for (int y = 0; y < HEIGHT; y++)
-                    paddedData.blocks[x + 1][y][0] = backN->m_Blocks.blocks[x][y][WIDTH - 1];
-        }
+                    for (int z = 0; z < WIDTH; z++)
+                        paddedData.blocks[0][y][z + 1] = leftN->m_Blocks.blocks[WIDTH - 1][y][z];
+            }
 
-        if (frontN) {
-            for (int x = 0; x < WIDTH; x++)
+            if (rightN) {
                 for (int y = 0; y < HEIGHT; y++)
-                    paddedData.blocks[x + 1][y][WIDTH + 1] = frontN->m_Blocks.blocks[x][y][0];
-        }
+                    for (int z = 0; z < WIDTH; z++)
+                        paddedData.blocks[WIDTH + 1][y][z + 1] = rightN->m_Blocks.blocks[0][y][z];
+            }
 
+            if (backN) {
+                for (int x = 0; x < WIDTH; x++)
+                    for (int y = 0; y < HEIGHT; y++)
+                        paddedData.blocks[x + 1][y][0] = backN->m_Blocks.blocks[x][y][WIDTH - 1];
+            }
 
-        // Launch the thread
-        std::thread worker(GenerateMeshWorker, this, std::move(paddedData), m_ChunkPosition);
-        worker.detach();
+            if (frontN) {
+                for (int x = 0; x < WIDTH; x++)
+                    for (int y = 0; y < HEIGHT; y++)
+                        paddedData.blocks[x + 1][y][WIDTH + 1] = frontN->m_Blocks.blocks[x][y][0];
+            }
 
-        /* Stupid Idea. Tanks performance from a locked 165 FPS to 4 FPS.
-        * 
-        // Mark as dirty so the chunk borders get removed
-        if (leftN && !leftN->m_IsGenerating) leftN->m_IsDirty = true;
-        if (rightN && !rightN->m_IsGenerating) rightN->m_IsDirty = true;
-        if (backN && !backN->m_IsGenerating) backN->m_IsDirty = true;
-        if (frontN && !frontN->m_IsGenerating) frontN->m_IsDirty = true;
-        */
+            // Generate mesh
+            GenerateMeshWorker(this, paddedData, pos);
+            });
     }
 }
 

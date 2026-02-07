@@ -78,6 +78,9 @@
     <ClCompile Include="src\world\Chunk.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="src\CameraFrustum.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Renderer.h">
@@ -159,6 +162,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="src\GBuffer.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CameraFrustum.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

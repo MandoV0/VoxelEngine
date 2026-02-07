@@ -62,4 +62,6 @@ private:
     // Times
     float m_LastFrame;
     float m_DeltaTime;
+
+    bool m_CursorLocked = true;
 };

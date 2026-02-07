@@ -76,12 +76,21 @@ public:
 	void NotifyNeighborsOfNewChunk(int cx, int cz);
 	void MarkChunkDirty(int cx, int cz);
 
-
+	bool frustumCulling = true;
+	void EnqueueJob(std::function<void()> job);
 
 private:	
 	int m_Seed;
 	FastNoiseLite m_Noise { m_Seed };
 	std::unordered_map<glm::ivec2, std::shared_ptr<Chunk>> m_Chunks;
+
+	FastNoiseLite m_BaseNoise;
+	FastNoiseLite m_MountainNoise;
+	FastNoiseLite m_MountainMask;
+	FastNoiseLite m_TreeDensityNoise;
+
+	std::atomic<int> m_ActiveChunkGenerations{ 0 };
+	static constexpr int MAX_CONCURRENT_GENERATIONS = 4;
 
 	// Raycasting cache
 	int lastcx = INT_MIN;
@@ -100,7 +109,7 @@ private:
 	void InitThreadPool(int numThreads = 4);
 	void ShutdownThreadPool();
 	void WorkerThreadLoop();
-	void EnqueueJob(std::function<void()> job);
+	
 	
 
 };

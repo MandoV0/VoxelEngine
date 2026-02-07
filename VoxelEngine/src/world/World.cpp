@@ -5,9 +5,39 @@
 #include <algorithm>
 #include <iostream>
 
-World::World(int seed)
-{
+World::World(int seed) :
+    m_BaseNoise(seed),
+    m_MountainNoise(seed + 1),
+    m_MountainMask(seed + 2),
+    m_TreeDensityNoise(seed + 3)
+{ 
+    // Base terrain. smooth rolling hills
+    m_BaseNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_BaseNoise.SetFrequency(0.004f);
+    m_BaseNoise.SetFractalType(FastNoiseLite::FractalType_FBm);
+    m_BaseNoise.SetFractalOctaves(4);
+    m_BaseNoise.SetFractalLacunarity(2.0f);
+    m_BaseNoise.SetFractalGain(0.5f);
+
+    // Mountains
+    m_MountainNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_MountainNoise.SetFrequency(0.008f);
+    m_MountainNoise.SetFractalGain(0.4f);
+    m_MountainNoise.SetFractalType(FastNoiseLite::FractalType_Ridged);
+    m_MountainNoise.SetFractalOctaves(3);
+
+    // Mountain mask.
+    m_MountainMask.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_MountainMask.SetFrequency(0.002f);
+
+    // TODO: Both Mountains passes are extremely mild.
+
+    // Tree Noise
+    m_TreeDensityNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+    m_TreeDensityNoise.SetFrequency(0.05f);
+
 	m_Seed = seed;
+
 	InitThreadPool();
 }
 
@@ -74,6 +104,11 @@ void World::UpdateChunksInRadius(int cx, int cz, int renderDistance)
 }
 
 void World::GenerateChunk(int cx, int cz) {
+    if (m_ActiveChunkGenerations >= MAX_CONCURRENT_GENERATIONS) {
+        return; // Skip if too many chunks are generating
+    }
+
+    m_ActiveChunkGenerations++;
     auto chunkPtr = std::make_shared<Chunk>(glm::ivec2(cx, cz));
     m_Chunks[glm::ivec2(cx, cz)] = chunkPtr;
 
@@ -84,35 +119,6 @@ void World::GenerateChunk(int cx, int cz) {
         constexpr int MIN_HEIGHT = 45;
         constexpr int MAX_HEIGHT = 95;
 
-        // Base terrain. smooth rolling hills
-        FastNoiseLite baseNoise(m_Seed);
-        baseNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-        baseNoise.SetFrequency(0.004f);
-        baseNoise.SetFractalType(FastNoiseLite::FractalType_FBm);
-        baseNoise.SetFractalOctaves(4);
-        baseNoise.SetFractalLacunarity(2.0f);
-        baseNoise.SetFractalGain(0.5f);
-
-        // Mountains
-        FastNoiseLite mountainNoise(m_Seed + 1);
-        mountainNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-        mountainNoise.SetFrequency(0.008f);
-		mountainNoise.SetFractalGain(0.4f);
-        mountainNoise.SetFractalType(FastNoiseLite::FractalType_Ridged);
-        mountainNoise.SetFractalOctaves(3);
-
-        // Mountain mask.
-        FastNoiseLite mountainMask(m_Seed + 2);
-        mountainMask.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-        mountainMask.SetFrequency(0.002f);
-
-        // TODO: Both Mountains passes are extremely mild.
-
-        // Tree Noise
-        FastNoiseLite treeDensityNoise(m_Seed + 3);
-        treeDensityNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
-        treeDensityNoise.SetFrequency(0.05f);
-
         int heightMap[CHUNK_SIZE][CHUNK_SIZE];
 
         // HEIGHT PASS
@@ -121,13 +127,13 @@ void World::GenerateChunk(int cx, int cz) {
                 int worldX = cx * CHUNK_SIZE + x;
                 int worldZ = cz * CHUNK_SIZE + z;
 
-                float base = baseNoise.GetNoise((float)worldX, (float)worldZ);
+                float base = m_BaseNoise.GetNoise((float)worldX, (float)worldZ);
                 base = (base + 1.0f) * 0.5f;
 
-                float mountain = std::abs(mountainNoise.GetNoise((float)worldX, (float)worldZ));
+                float mountain = std::abs(m_MountainNoise.GetNoise((float)worldX, (float)worldZ));
                 mountain = std::pow(mountain * 3, 1.8f);
 
-                float mask = mountainMask.GetNoise((float)worldX, (float)worldZ);
+                float mask = m_MountainMask.GetNoise((float)worldX, (float)worldZ);
                 mask = (mask + 1.0f) * 0.5f;
                 mask = std::pow(mask, 2.5f);
 
@@ -189,7 +195,7 @@ void World::GenerateChunk(int cx, int cz) {
                 if (chunkPtr->GetBlockType(x, height, z) != BlockType::GRASS) continue;
 
                 // Tree density check
-                float density = treeDensityNoise.GetNoise((float)worldX, (float)worldZ);
+                float density = m_TreeDensityNoise.GetNoise((float)worldX, (float)worldZ);
                 density = (density + 1.0f) * 0.5f;  // 0 - 1
 
                 // Random tree placement using world coordinates as seed. Should probably explore blue noise here for good tree placement. TODO
@@ -212,6 +218,8 @@ void World::GenerateChunk(int cx, int cz) {
         chunkPtr->SetIsDirty(true);
 
         NotifyNeighborsOfNewChunk(cx, cz);
+
+        m_ActiveChunkGenerations--;
         });
 }
 
@@ -336,38 +344,22 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
 
 void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
 {
-    float maxViewDistance = 12 * Chunk::WIDTH; // e.g., 12 chunks away
-	bool frustumCulling = false;
-        
     for (auto& [coord, chunk] : m_Chunks)
     {
+        if (!chunk || !chunk->GetIsFullyLoaded() || !chunk->IsTerrainGenerated())
+            continue;
 
-        // Broken when high up in the air????
         if (frustumCulling)
         {
-            glm::vec3 camPosXZ = glm::vec3(camera.GetPosition().x, 0, camera.GetPosition().z);
-            glm::vec3 camForwardXZ = glm::normalize(glm::vec3(camera.GetFront().x, 0, camera.GetFront().z));
+            float minX = (float) coord.x * Chunk::WIDTH;
+            float minZ = (float) coord.y * Chunk::WIDTH;
+            float maxX = minX + Chunk::WIDTH;
+            float maxZ = minZ + Chunk::WIDTH;
 
-            float chunkCenterX = coord.x * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
-            float chunkCenterZ = coord.y * Chunk::WIDTH + Chunk::WIDTH * 0.5f;
-
-            float minX = chunkCenterX - Chunk::WIDTH * 0.5f;
-            float maxX = chunkCenterX + Chunk::WIDTH * 0.5f;
-            float minZ = chunkCenterZ - Chunk::WIDTH * 0.5f;
-            float maxZ = chunkCenterZ + Chunk::WIDTH * 0.5f;
-
-            // Closest point method
-		    // Instead of checking distance to all 4 corners, we can find the closest point of the chunk that can enter the camera.
-            float closestX = glm::clamp(camPosXZ.x, minX, maxX);
-            float closestZ = glm::clamp(camPosXZ.z, minZ, maxZ);
-            glm::vec3 closestPoint = glm::vec3(closestX, 0, closestZ);
-
-            float distSq = glm::distance(camPosXZ, closestPoint);
-
-		    // The distance check is to avoid the current chunk we are being in not being rendered.
-            if (distSq > maxViewDistance && !isInFOV2D(camPosXZ, camForwardXZ, 85.f, closestPoint))
+            // AABB check
+            if (!camera.FrustumIntersectsAABB(glm::vec3(minX, 0.0f, minZ), glm::vec3(maxX, (float)Chunk::HEIGHT, maxZ)))
             {
-                continue; // Skip chunk
+                continue;
             }
         }
 
