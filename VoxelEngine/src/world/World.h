@@ -53,6 +53,9 @@ public:
 	void RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int wy, int wz);
 
 	void SpawnTree(int wx, int height, int wz);
+
+	void GenerateTree(std::shared_ptr<Chunk> chunk, int x, int y, int z, int height); // Experimental
+
 	float GetTreeNoise(int wx, int wz);
 
 	static int WorldToChunk(int x);
@@ -69,6 +72,10 @@ public:
 
 		return cosAngle >= cosHalfFov;
 	}
+
+	void NotifyNeighborsOfNewChunk(int cx, int cz);
+	void MarkChunkDirty(int cx, int cz);
+
 
 
 private:	

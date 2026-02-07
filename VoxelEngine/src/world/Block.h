@@ -9,6 +9,7 @@ enum BlockType
 	LEAF = 4,
 	WATER = 5,
 	DIRT = 6,
+	SAND = 7
 };
 
 class Block

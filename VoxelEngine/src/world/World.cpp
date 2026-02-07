@@ -78,56 +78,224 @@ void World::GenerateChunk(int cx, int cz) {
     m_Chunks[glm::ivec2(cx, cz)] = chunkPtr;
 
     EnqueueJob([this, cx, cz, chunkPtr]() {
-		// Unique for each Thread so it is thread safe
-        FastNoiseLite noise(m_Seed);
-        noise.SetFractalType(FastNoiseLite::FractalType::FractalType_FBm);
-        noise.SetFrequency(0.01f);
-        noise.SetFractalLacunarity(2.0f);
-        noise.SetFractalGain(0.5f);
-
         constexpr int CHUNK_SIZE = 16;
         constexpr int CHUNK_HEIGHT = 128;
-        constexpr int MAX_HEIGHT = 64;
-        constexpr int MIN_HEIGHT = 40;
-        constexpr int SEA_LEVEL = 48;
+        constexpr int SEA_LEVEL = 62;
+        constexpr int MIN_HEIGHT = 45;
+        constexpr int MAX_HEIGHT = 95;
+
+        // Base terrain. smooth rolling hills
+        FastNoiseLite baseNoise(m_Seed);
+        baseNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+        baseNoise.SetFrequency(0.004f);
+        baseNoise.SetFractalType(FastNoiseLite::FractalType_FBm);
+        baseNoise.SetFractalOctaves(4);
+        baseNoise.SetFractalLacunarity(2.0f);
+        baseNoise.SetFractalGain(0.5f);
+
+        // Mountains
+        FastNoiseLite mountainNoise(m_Seed + 1);
+        mountainNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+        mountainNoise.SetFrequency(0.008f);
+		mountainNoise.SetFractalGain(0.4f);
+        mountainNoise.SetFractalType(FastNoiseLite::FractalType_Ridged);
+        mountainNoise.SetFractalOctaves(3);
+
+        // Mountain mask.
+        FastNoiseLite mountainMask(m_Seed + 2);
+        mountainMask.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+        mountainMask.SetFrequency(0.002f);
+
+        // TODO: Both Mountains passes are extremely mild.
+
+        // Tree Noise
+        FastNoiseLite treeDensityNoise(m_Seed + 3);
+        treeDensityNoise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+        treeDensityNoise.SetFrequency(0.05f);
 
         int heightMap[CHUNK_SIZE][CHUNK_SIZE];
-        
-        // Height generation
+
+        // HEIGHT PASS
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int worldX = cx * CHUNK_SIZE + x;
                 int worldZ = cz * CHUNK_SIZE + z;
-                float noiseVal = noise.GetNoise((float)worldX, (float)worldZ);
-                float n01 = (noiseVal + 1.0f) * 0.5f;
-                int height = MIN_HEIGHT + (int)(n01 * (MAX_HEIGHT - MIN_HEIGHT));
 
-                float weirdness = std::fabs(noiseVal);
-                float pAndV = 1.0f - std::fabs((3.0f * weirdness) - 2.0f);
-                pAndV = std::clamp(pAndV, 0.0f, 1.0f);
-                height += (int)(pAndV * 15);
+                float base = baseNoise.GetNoise((float)worldX, (float)worldZ);
+                base = (base + 1.0f) * 0.5f;
+
+                float mountain = std::abs(mountainNoise.GetNoise((float)worldX, (float)worldZ));
+                mountain = std::pow(mountain * 3, 1.8f);
+
+                float mask = mountainMask.GetNoise((float)worldX, (float)worldZ);
+                mask = (mask + 1.0f) * 0.5f;
+                mask = std::pow(mask, 2.5f);
+
+                float finalHeight = base * 0.6f + mountain * mask * 0.7f;
+
+                int height = MIN_HEIGHT + (int)(finalHeight * (MAX_HEIGHT - MIN_HEIGHT));
                 height = std::clamp(height, 1, CHUNK_HEIGHT - 1);
+
                 heightMap[x][z] = height;
             }
         }
 
-        // Terrain blocks
+        // BLOCK PASS
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int height = heightMap[x][z];
+
                 for (int y = 0; y <= height; y++) {
-                    if (y == height)
-                        chunkPtr->SetBlock(x, y, z, BlockType::GRASS);
-                    else if (y > height - 4)
-                        chunkPtr->SetBlock(x, y, z, BlockType::DIRT);
-                    else
-                        chunkPtr->SetBlock(x, y, z, BlockType::STONE);
+                    BlockType blockType;
+
+                    if (y == height) {
+                        if (height < SEA_LEVEL - 2) {
+                            blockType = BlockType::DIRT;
+                        }
+                        else if (height > 85) {
+                            blockType = BlockType::STONE;
+                        }
+                        else {
+                            blockType = BlockType::GRASS;
+                        }
+                    }
+                    else if (y > height - 4) {
+                        blockType = BlockType::DIRT;
+                    }
+                    else {
+                        blockType = BlockType::STONE;
+                    }
+
+                    chunkPtr->SetBlock(x, y, z, blockType);
+                }
+
+                if (height < SEA_LEVEL) {
+                    for (int y = height + 1; y <= SEA_LEVEL; y++) {
+                        chunkPtr->SetBlock(x, y, z, BlockType::WATER);
+                    }
+                }
+            }
+        }
+
+        // TREE PASS
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                int worldX = cx * CHUNK_SIZE + x;
+                int worldZ = cz * CHUNK_SIZE + z;
+                int height = heightMap[x][z];
+
+				// Spawn Trees only on Grass and above sea level, and below a certain height to avoid mountain tops
+                if (height <= SEA_LEVEL || height > 80) continue;
+                if (chunkPtr->GetBlockType(x, height, z) != BlockType::GRASS) continue;
+
+                // Tree density check
+                float density = treeDensityNoise.GetNoise((float)worldX, (float)worldZ);
+                density = (density + 1.0f) * 0.5f;  // 0 - 1
+
+                // Random tree placement using world coordinates as seed. Should probably explore blue noise here for good tree placement. TODO
+                unsigned int hash = (worldX * 374761393) + (worldZ * 668265263);
+                float random = (float)(hash % 10000) / 10000.0f;
+
+                // Spawn tree?
+                float spawnChance = 0.01f + density * 0.01f;  // 5-20% chance
+                if (random < spawnChance) {
+                    // Choose tree type
+                    float treeTypeRand = (float)((hash >> 16) % 100) / 100.0f;
+
+                    GenerateTree(chunkPtr, x, height + 1, z, 4 + (hash % 3));
                 }
             }
         }
 
         chunkPtr->SetTerrainGenerated(true);
+        chunkPtr->SetIsFullyLoaded(true);
+        chunkPtr->SetIsDirty(true);
+
+        NotifyNeighborsOfNewChunk(cx, cz);
         });
+}
+
+// Helper function for tree generation
+void World::GenerateTree(std::shared_ptr<Chunk> chunk, int x, int y, int z, int height) {
+    constexpr int CHUNK_SIZE = 16;
+
+    // Trunk
+    for (int i = 0; i < height; i++) {
+        if (y + i < 128) {
+            chunk->SetBlock(x, y + i, z, BlockType::WOOD);
+        }
+    }
+
+    // Leaves - 3 layers
+    int topY = y + height;
+
+    // Top layer (cross shape)
+    if (topY < 128) {
+        chunk->SetBlock(x, topY, z, BlockType::LEAF);
+        if (x > 0) chunk->SetBlock(x - 1, topY, z, BlockType::LEAF);
+        if (x < CHUNK_SIZE - 1) chunk->SetBlock(x + 1, topY, z, BlockType::LEAF);
+        if (z > 0) chunk->SetBlock(x, topY, z - 1, BlockType::LEAF);
+        if (z < CHUNK_SIZE - 1) chunk->SetBlock(x, topY, z + 1, BlockType::LEAF);
+    }
+
+    // Middle and bottom layers (larger)
+    for (int layerOffset = 1; layerOffset <= 2; layerOffset++) {
+        int layerY = topY - layerOffset;
+        if (layerY < 0 || layerY >= 128) continue;
+
+        int radius = (layerOffset == 1) ? 2 : 2;
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int lx = x + dx;
+                int lz = z + dz;
+
+                // Skip trunk
+                if (dx == 0 && dz == 0) continue;
+
+                // Skip corners
+                if (std::abs(dx) == radius && std::abs(dz) == radius) {
+                    if (rand() % 2 == 0) continue;  // 50% chance to skip corners
+                }
+
+                // Check bounds
+                if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE) {
+                    BlockType existing = chunk->GetBlockType(lx, layerY, lz);
+                    if (existing == BlockType::AIR) {
+                        chunk->SetBlock(lx, layerY, lz, BlockType::LEAF);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void World::NotifyNeighborsOfNewChunk(int cx, int cz) {
+	// Mark all 4 Neighbors as dirty so they update and re render the faces towards this new chunk
+    Chunk* leftN = GetChunk(cx - 1, cz);
+    Chunk* rightN = GetChunk(cx + 1, cz);
+    Chunk* backN = GetChunk(cx, cz - 1);
+    Chunk* frontN = GetChunk(cx, cz + 1);
+
+    if (leftN && leftN->GetIsFullyLoaded() && leftN->IsTerrainGenerated()) {
+        leftN->SetIsDirty(true);
+    }
+    if (rightN && rightN->GetIsFullyLoaded() && rightN->IsTerrainGenerated()) {
+        rightN->SetIsDirty(true);
+    }
+    if (backN && backN->GetIsFullyLoaded() && backN->IsTerrainGenerated()) {
+        backN->SetIsDirty(true);
+    }
+    if (frontN && frontN->GetIsFullyLoaded() && frontN->IsTerrainGenerated()) {
+        frontN->SetIsDirty(true);
+    }
+}
+
+void World::MarkChunkDirty(int cx, int cz) {
+    Chunk* chunk = GetChunk(cx, cz);
+    if (chunk && chunk->GetIsFullyLoaded()) {
+        chunk->SetIsDirty(true);;
+    }
 }
 
 void World::DropChunk(int cx, int cz)
@@ -170,7 +338,7 @@ void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
 {
     float maxViewDistance = 12 * Chunk::WIDTH; // e.g., 12 chunks away
 	bool frustumCulling = false;
-
+        
     for (auto& [coord, chunk] : m_Chunks)
     {
 

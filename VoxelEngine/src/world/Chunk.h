@@ -62,6 +62,8 @@ private:
 	std::vector<Vertex> m_IntermediateVertices;
 	std::vector<unsigned int> m_IntermediateIndices;
 
+	bool m_isFullyLoaded = false;
+
 	// Helper methods
 	bool IsAir(int x, int y, int z);
 	static bool IsSolid(BlockType type);
@@ -94,4 +96,9 @@ public:
 	void SetTerrainGenerated(bool generated) { m_IsTerrainGenerated = generated; }
 
 	static float GetLightLevelAt(int x, int y, int z, const ChunkData& data);
+
+	bool GetIsFullyLoaded() const { return m_isFullyLoaded; }
+	void SetIsFullyLoaded(bool loaded) { m_isFullyLoaded = loaded; }
+
+	void SetIsDirty(bool dirty) { m_IsDirty = dirty; }
 };

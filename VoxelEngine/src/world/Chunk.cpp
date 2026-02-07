@@ -540,6 +540,21 @@ void Chunk::Update(World* world)
     // If blocks changed and we arent already working, start a thread
     if (m_IsDirty && !m_IsGenerating)
     {
+        Chunk* leftN = world->GetChunk(m_ChunkPosition.x - 1, m_ChunkPosition.y);
+        Chunk* rightN = world->GetChunk(m_ChunkPosition.x + 1, m_ChunkPosition.y);
+        Chunk* backN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y - 1);
+        Chunk* frontN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y + 1);
+
+        bool allNeighborsReady =
+            (!leftN || leftN->GetIsFullyLoaded()) &&
+            (!rightN || rightN->GetIsFullyLoaded()) &&
+            (!backN || backN->GetIsFullyLoaded()) &&
+            (!frontN || frontN->GetIsFullyLoaded());
+
+        if (!allNeighborsReady) {
+            return;
+        }
+
         m_IsGenerating = true;
         m_IsDirty = false;
 
@@ -558,11 +573,6 @@ void Chunk::Update(World* world)
         */
 
         PaddedChunkData paddedData;
-
-		Chunk* leftN = world->GetChunk(m_ChunkPosition.x - 1, m_ChunkPosition.y); // Left
-        Chunk* rightN = world->GetChunk(m_ChunkPosition.x + 1, m_ChunkPosition.y); // Right
-        Chunk* backN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y - 1); // Back
-        Chunk* frontN = world->GetChunk(m_ChunkPosition.x, m_ChunkPosition.y + 1); // Front
 
         // Fill Center
         for (int x = 0; x < WIDTH; x++) {
