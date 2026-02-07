@@ -9,6 +9,9 @@
 #include "../VertexBuffer.h"
 #include "../IndexBuffer.h"
 #include "../Renderer.h"
+#include "World.h"
+
+class World;
 
 struct Vertex {
 	float x, y, z;
@@ -63,19 +66,25 @@ private:
 	bool IsAir(int x, int y, int z);
 	static bool IsSolid(BlockType type);
 	static BlockType GetBlockTypeFromData(const ChunkData& data, int x, int y, int z);
+	static BlockType GetBlockTypeFromData(const PaddedChunkData& data, int x, int y, int z);
 
 	static void CreateBlockWorker(const ChunkData& data, glm::ivec2 chunkPos,
 		std::vector<Vertex>& vertices,
 		std::vector<unsigned int>& indices,
 		int x, int y, int z);
 
-	static void GenerateMeshWorker(Chunk* chunk, ChunkData data, glm::ivec2 position);
+	static void CreateBlockWorker(const PaddedChunkData& data, glm::ivec2 chunkPos,
+		std::vector<Vertex>& vertices,
+		std::vector<unsigned int>& indices,
+		int x, int y, int z);
+
+	static void GenerateMeshWorker(Chunk* chunk, const PaddedChunkData data, glm::ivec2 position);
 
 public:
 	Chunk(glm::ivec2 position);
 	~Chunk();
 
-	void Update();
+	void Update(World* world);
 	void Render(Renderer& renderer, Shader& shader);
 	void SetBlock(int x, int y, int z, BlockType blockType);
 	BlockType GetBlockType(int x, int y, int z);

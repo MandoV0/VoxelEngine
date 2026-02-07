@@ -14,6 +14,8 @@
 #include <atomic>
 #include <unordered_map>
 
+class Chunk;
+
 // ivec2 hash function for unordered_map, i cant get glms hash to work for some reason
 namespace std {
 	template<>

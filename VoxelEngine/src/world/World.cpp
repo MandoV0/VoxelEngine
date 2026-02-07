@@ -67,7 +67,7 @@ void World::UpdateChunksInRadius(int cx, int cz, int renderDistance)
             }
             else if (chunk->IsTerrainGenerated()) {
 				// Only update chunks when dirty
-				chunk->Update();
+				chunk->Update(this);
             }
         }
     }
