@@ -71,6 +71,7 @@ void Game::Init()
 
     m_CutoutShader = std::make_unique<Shader>("res/shaders/vertex.shader", "res/shaders/fragment.shader");
     m_WaterShader = std::make_unique<Shader>("res/shaders/water_vertex.shader", "res/shaders/water_fragment.shader");
+	m_FogShader = std::make_unique<Shader>("res/shaders/fog_vert.shader", "res/shaders/fog_frag.shader");
 
     m_AtlasTexture = std::make_unique<Texture>("res/textures/atlas.png");
 
@@ -161,11 +162,19 @@ void Game::Render()
 	glDepthMask(true);
 
     m_WorldShader->Bind();
-    m_WorldShader->SetUniformMat4f("u_MVP", mvp);
+    m_WorldShader->SetUniformMat4f("u_Model", m_Model);
+    m_WorldShader->SetUniformMat4f("u_View", view);
+    m_WorldShader->SetUniformMat4f("u_Proj", m_Projection);
     m_WorldShader->SetUniform1i("u_Texture", 0);
 
-    m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera, 0);
+    // FOG
+    m_WorldShader->SetUniform3f("u_FogColor", 0.369f, 0.627f, 0.71f);
+    m_WorldShader->SetUniform1f("u_FogDensity", m_FogDensity);
+    m_WorldShader->SetUniform1f("u_FogFalloff", m_FogFalloff);
+    m_WorldShader->SetUniform1f("u_FogHeight", m_FogHeight);
+    m_WorldShader->SetUniform1i("u_FogMode", m_FogMode);
 
+    m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera, 0);
 
     // CUTOUT BLOCK PASS
     m_CutoutShader->Bind();
@@ -186,7 +195,6 @@ void Game::Render()
     m_WaterShader->SetUniform1f("u_Time", static_cast<float>(glfwGetTime()));
 
     m_World->Render(*m_Renderer, *m_WaterShader, *m_Camera, 2);
-
 
     // Reset Rendering State
     glDepthMask(GL_TRUE);
@@ -217,6 +225,13 @@ void Game::RenderImGui()
 	ImGui::Text("Current Chunk Position: X %d | Z %d", World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().x)), World::WorldToChunk(static_cast<int>(m_Camera->GetPosition().z)));
 
     ImGui::Checkbox("Frustum Culling", &m_World->frustumCulling);
+
+	ImGui::BeginGroup();
+	ImGui::SliderFloat("Fog Density", &m_FogDensity, 0.0f, 0.1f);
+	ImGui::SliderFloat("Fog FallOff", &m_FogFalloff, 0.0f, 0.5f);
+	ImGui::SliderFloat("Fog Height", &m_FogHeight, 0.0f, 512.0f);
+	ImGui::SliderInt("Fog Mode (0 Exp, 1 Exp Height)", &m_FogMode, 0, 1);
+	ImGui::EndGroup();
 
 
     ImGui::Text("Block Position: X %d | Y %d | Z %d", m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);

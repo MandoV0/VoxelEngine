@@ -48,6 +48,7 @@ private:
     std::unique_ptr<Shader> m_SkyboxShader;
     std::unique_ptr<Shader> m_CutoutShader;
     std::unique_ptr<Shader> m_WaterShader;
+    std::unique_ptr<Shader> m_FogShader;
 
     std::unique_ptr<Texture> m_AtlasTexture;
 
@@ -68,4 +69,9 @@ private:
     float m_DeltaTime;
 
     bool m_CursorLocked = true;
+
+    float m_FogDensity = 0.015f;
+	float m_FogFalloff = 0.12f;
+	float m_FogHeight = 64.0f;
+    int m_FogMode = 1; // 0 = exp, 1 = height exp
 };
