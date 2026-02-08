@@ -53,7 +53,6 @@ void Game::Init()
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
-    //glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     InitImGui();
@@ -69,6 +68,10 @@ void Game::Init()
     m_World = std::make_unique<World>(1337);
 
     m_WorldShader = std::make_unique<Shader>("res/shaders/vertex.shader", "res/shaders/fragment.shader");
+
+    m_CutoutShader = std::make_unique<Shader>("res/shaders/vertex.shader", "res/shaders/fragment.shader");
+    m_WaterShader = std::make_unique<Shader>("res/shaders/water_vertex.shader", "res/shaders/water_fragment.shader");
+
     m_AtlasTexture = std::make_unique<Texture>("res/textures/atlas.png");
 
     unsigned int cubeMapID = Texture::LoadCubemap("res/textures/Cubemap_Sky_04-512x512.png");
@@ -150,13 +153,44 @@ void Game::Render()
     glm::mat4 view = m_Camera->GetViewMatrix();
     glm::mat4 mvp = m_Projection * view * m_Model;
 
-    // Render world
+    // Bind texture atlas
+    m_AtlasTexture->Bind(0);
+
+    // SOLID BLOCK PASS
+	glDisable(GL_BLEND);
+	glDepthMask(true);
+
     m_WorldShader->Bind();
     m_WorldShader->SetUniformMat4f("u_MVP", mvp);
-    m_AtlasTexture->Bind();
     m_WorldShader->SetUniform1i("u_Texture", 0);
 
-    m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera);
+    m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera, 0);
+
+
+    // CUTOUT BLOCK PASS
+    m_CutoutShader->Bind();
+    m_CutoutShader->SetUniformMat4f("u_MVP", mvp);
+    m_CutoutShader->SetUniform1i("u_Texture", 0);
+
+    m_World->Render(*m_Renderer, *m_CutoutShader, *m_Camera, 1);
+
+
+	// TRANSLUCENT BLOCK PASS
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);  // Disable depth writing for transparency
+
+    m_WaterShader->Bind();
+    m_WaterShader->SetUniformMat4f("u_MVP", mvp);
+    m_WaterShader->SetUniform1i("u_Texture", 0);
+    m_WaterShader->SetUniform1f("u_Time", static_cast<float>(glfwGetTime()));
+
+    m_World->Render(*m_Renderer, *m_WaterShader, *m_Camera, 2);
+
+
+    // Reset Rendering State
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
 
     if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock))
     {

@@ -3,9 +3,12 @@
 #include "../VertexBufferLayout.h"
 #include <iostream>
 #include "../vendor/FastNoiseLite.h"
+
 #include "World.h"
 
-Chunk::Chunk(glm::ivec2 position) : m_ChunkPosition(position), m_VA(nullptr), m_VB(nullptr), m_IB(nullptr)
+
+Chunk::Chunk(glm::ivec2 position) : m_ChunkPosition(position), m_VA(nullptr), m_VB(nullptr), m_IB(nullptr),
+m_WaterVA(nullptr), m_WaterVB(nullptr), m_WaterIB(nullptr)
 {
     
 }
@@ -15,6 +18,10 @@ Chunk::~Chunk()
     delete m_VA;
     delete m_VB;
     delete m_IB;
+
+    delete m_WaterVA;
+    delete m_WaterVB;
+    delete m_WaterIB;
 }
 
 BlockType Chunk::GetBlockTypeFromData(const ChunkData& data, int x, int y, int z)
@@ -270,6 +277,15 @@ void Chunk::CreateBlockWorker(const PaddedChunkData& data, glm::ivec2 chunkPos, 
     bool renderTop = !IsSolid(GetBlockTypeFromData(data, x, y + 1, z));
     bool renderBottom = !IsSolid(GetBlockTypeFromData(data, x, y - 1, z));
 
+	if (blockType == BlockType::WATER) {
+        // For water, we only render the top face if the block above is not water, and we render the sides if the neighboring block is not solid (to create a "flow" effect)
+        renderTop = !IsSolid(GetBlockTypeFromData(data, x, y + 1, z)) && GetBlockTypeFromData(data, x, y + 1, z) != BlockType::WATER;
+        renderFront = !IsSolid(GetBlockTypeFromData(data, x, y, z + 1)) && GetBlockTypeFromData(data, x, y, z + 1) != BlockType::WATER;
+        renderBack = !IsSolid(GetBlockTypeFromData(data, x, y, z - 1)) && GetBlockTypeFromData(data, x, y, z - 1) != BlockType::WATER;
+        renderLeft = !IsSolid(GetBlockTypeFromData(data, x - 1, y, z)) && GetBlockTypeFromData(data, x - 1, y, z) != BlockType::WATER;
+        renderRight = !IsSolid(GetBlockTypeFromData(data, x + 1, y, z)) && GetBlockTypeFromData(data, x + 1, y, z) != BlockType::WATER;
+    }
+
     // Skip if all faces are hdden
     if (!renderFront && !renderBack && !renderLeft &&
         !renderRight && !renderTop && !renderBottom) {
@@ -480,6 +496,12 @@ void Chunk::GenerateMeshWorker(Chunk* chunk, const PaddedChunkData data, glm::iv
 {
     std::vector<Vertex> localVertices;
     std::vector<unsigned int> localIndices;
+    
+    std::vector<Vertex> localWaterVertices;
+    std::vector<unsigned int> localWaterIndices;
+
+    localWaterVertices.reserve(2048);
+    localWaterIndices.reserve(3072);
 
     // Use a conservative reserve to avoid reallocations
     localVertices.reserve(8192);
@@ -489,8 +511,17 @@ void Chunk::GenerateMeshWorker(Chunk* chunk, const PaddedChunkData data, glm::iv
         for (int y = 0; y < HEIGHT; y++)
             for (int z = 0; z < WIDTH; z++)
             {
-                if (GetBlockTypeFromData(data, x, y, z) != BlockType::AIR)
+				BlockType type = GetBlockTypeFromData(data, x, y, z);
+                if (type == BlockType::AIR) continue;
+
+                if (type == BlockType::WATER)
+                {
+					CreateBlockWorker(data, position, localWaterVertices, localWaterIndices, x, y, z);
+                }
+                else
+                {
                     CreateBlockWorker(data, position, localVertices, localIndices, x, y, z);
+                }
             }
 
     // Pass data back to the chunk
@@ -498,6 +529,11 @@ void Chunk::GenerateMeshWorker(Chunk* chunk, const PaddedChunkData data, glm::iv
         std::lock_guard<std::mutex> lock(chunk->m_MeshMutex);
         chunk->m_IntermediateVertices = std::move(localVertices);
         chunk->m_IntermediateIndices = std::move(localIndices);
+
+        chunk->m_IntermediateWaterVertices = std::move(localWaterVertices);
+        chunk->m_IntermediateWaterIndices = std::move(localWaterIndices);
+        chunk->m_HasNewWaterMesh = true;
+
         chunk->m_HasNewMesh = true;
         chunk->m_IsGenerating = false;
     }
@@ -537,69 +573,107 @@ void Chunk::Update(World* world)
         m_HasNewMesh = false;
     }
 
+    if (m_HasNewWaterMesh)
+    {
+        std::lock_guard<std::mutex> lock(m_MeshMutex);
+
+        // Upload water mesh
+        delete m_WaterVA; delete m_WaterVB; delete m_WaterIB;
+        m_WaterVA = nullptr; m_WaterVB = nullptr; m_WaterIB = nullptr;
+
+        if (!m_IntermediateWaterVertices.empty()) {
+            m_WaterVA = new VertexArray();
+            m_WaterVA->Bind();
+            m_WaterVB = new VertexBuffer(m_IntermediateWaterVertices.data(),
+                m_IntermediateWaterVertices.size() * sizeof(Vertex));
+            VertexBufferLayout layout;
+            layout.Push<float>(3);
+            layout.Push<float>(2);
+            layout.Push<float>(1);
+            layout.Push<float>(1);
+            m_WaterVA->AddBuffer(*m_WaterVB, layout);
+            m_WaterIB = new IndexBuffer(m_IntermediateWaterIndices.data(),
+                m_IntermediateWaterIndices.size());
+            m_WaterVA->Unbind();
+        }
+
+        m_IntermediateWaterVertices.clear();
+        m_IntermediateWaterIndices.clear();
+        m_HasNewWaterMesh = false;
+    }
+
     if (m_IsDirty && !m_IsGenerating)
     {
         m_IsGenerating = true;
         m_IsDirty = false;
 
         glm::ivec2 pos = m_ChunkPosition;
-        world->EnqueueJob([this, world, pos]() {
-            // Create padded data on worker thread instead of main thread.
-            // Basically removes all stutter.
-            Chunk* leftN = world->GetChunk(pos.x - 1, pos.y);
-            Chunk* rightN = world->GetChunk(pos.x + 1, pos.y);
-            Chunk* backN = world->GetChunk(pos.x, pos.y - 1);
-            Chunk* frontN = world->GetChunk(pos.x, pos.y + 1);
+        
+        // Prepare Padded Data on Main Thread to avoid race conditions with SetBlock
+        // Access neighbors safely on Main Thread
+        Chunk* leftN = world->GetChunk(pos.x - 1, pos.y);
+        Chunk* rightN = world->GetChunk(pos.x + 1, pos.y);
+        Chunk* backN = world->GetChunk(pos.x, pos.y - 1);
+        Chunk* frontN = world->GetChunk(pos.x, pos.y + 1);
 
-            // Copy data
-            ChunkData dataSnapshot = m_Blocks;
-            PaddedChunkData paddedData{};
+        // Copy data
+        // We create a shared_ptr to the padded data so we can move it into the lambda
+        // Using shared_ptr avoids large stack copies if the lambda captures by value
+        auto paddedData = std::make_shared<PaddedChunkData>();
 
-            // Fill Center
-            for (int x = 0; x < WIDTH; x++) {
-                for (int y = 0; y < HEIGHT; y++) {
-                    for (int z = 0; z < WIDTH; z++) {
-                        paddedData.blocks[x + 1][y][z + 1] = dataSnapshot.blocks[x][y][z];
-                    }
+        // Fill Center
+        for (int x = 0; x < WIDTH; x++) {
+            for (int y = 0; y < HEIGHT; y++) {
+                for (int z = 0; z < WIDTH; z++) {
+                    paddedData->blocks[x + 1][y][z + 1] = m_Blocks.blocks[x][y][z];
                 }
             }
+        }
 
-            // Neigbor data
-            if (leftN) {
+        // Neigbor data
+        if (leftN && leftN->IsTerrainGenerated()) {
+            for (int y = 0; y < HEIGHT; y++)
+                for (int z = 0; z < WIDTH; z++)
+                    paddedData->blocks[0][y][z + 1] = leftN->m_Blocks.blocks[WIDTH - 1][y][z];
+        }
+
+        if (rightN && rightN->IsTerrainGenerated()) {
+            for (int y = 0; y < HEIGHT; y++)
+                for (int z = 0; z < WIDTH; z++)
+                    paddedData->blocks[WIDTH + 1][y][z + 1] = rightN->m_Blocks.blocks[0][y][z];
+        }
+
+        if (backN && backN->IsTerrainGenerated()) {
+            for (int x = 0; x < WIDTH; x++)
                 for (int y = 0; y < HEIGHT; y++)
-                    for (int z = 0; z < WIDTH; z++)
-                        paddedData.blocks[0][y][z + 1] = leftN->m_Blocks.blocks[WIDTH - 1][y][z];
-            }
+                    paddedData->blocks[x + 1][y][0] = backN->m_Blocks.blocks[x][y][WIDTH - 1];
+        }
 
-            if (rightN) {
+        if (frontN && frontN->IsTerrainGenerated()) {
+            for (int x = 0; x < WIDTH; x++)
                 for (int y = 0; y < HEIGHT; y++)
-                    for (int z = 0; z < WIDTH; z++)
-                        paddedData.blocks[WIDTH + 1][y][z + 1] = rightN->m_Blocks.blocks[0][y][z];
-            }
+                    paddedData->blocks[x + 1][y][WIDTH + 1] = frontN->m_Blocks.blocks[x][y][0];
+        }
 
-            if (backN) {
-                for (int x = 0; x < WIDTH; x++)
-                    for (int y = 0; y < HEIGHT; y++)
-                        paddedData.blocks[x + 1][y][0] = backN->m_Blocks.blocks[x][y][WIDTH - 1];
-            }
-
-            if (frontN) {
-                for (int x = 0; x < WIDTH; x++)
-                    for (int y = 0; y < HEIGHT; y++)
-                        paddedData.blocks[x + 1][y][WIDTH + 1] = frontN->m_Blocks.blocks[x][y][0];
-            }
-
-            // Generate mesh
-            GenerateMeshWorker(this, paddedData, pos);
-            });
+        world->EnqueueJob([this, paddedData, pos]() {
+            // Generate mesh using the snapshot
+            GenerateMeshWorker(this, *paddedData, pos);
+        });
     }
 }
 
-void Chunk::Render(Renderer& renderer, Shader& shader)
+
+void Chunk::Render(Renderer& renderer, Shader& shader, int layer)
 {
-    if (!m_VA || !m_IB) return;
-    if (m_IB->GetCount() == 0) return;
-    renderer.Draw(*m_VA, *m_IB, shader);
+	if (layer == 0) {
+        if (!m_VA || !m_IB) return;
+        if (m_IB->GetCount() == 0) return;
+        renderer.Draw(*m_VA, *m_IB, shader);
+    } else if (layer == 2) {
+        if (!m_WaterVA || !m_WaterIB) return;
+        if (m_WaterIB->GetCount() == 0) return;
+        renderer.Draw(*m_WaterVA, *m_WaterIB, shader);
+    }
 }
 
 BlockType Chunk::GetBlockType(int x, int y, int z)
@@ -637,7 +711,10 @@ bool Chunk::IsAir(int x, int y, int z)
     return GetBlockType(x, y, z) == BlockType::AIR;
 }
 
+// Add all Transparent textures/blocks here so Solid faces adjacent to them are rendered
 bool Chunk::IsSolid(BlockType type)
 {
-	return type != BlockType::AIR && type != BlockType::LEAF; // Add all Transparent textures/blocks here so Solid faces adjacent to them are rendered
+	return  type != BlockType::AIR &&
+            type != BlockType::LEAF &&
+            type != BlockType::WATER; 
 }

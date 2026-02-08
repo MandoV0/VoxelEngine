@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Chunk.h"
 #include <memory>
 #include <glm.hpp>
 #include "../vendor/FastNoiseLite.h"
@@ -13,6 +12,9 @@
 #include <condition_variable>
 #include <atomic>
 #include <unordered_map>
+
+#include "../VertexBufferLayout.h"
+#include "Block.h"
 
 class Chunk;
 
@@ -46,7 +48,7 @@ public:
 	BlockType GetBlock(int wx, int wy, int wz);
 	void SetBlock(int wx, int wy, int wz, BlockType type);
 
-	void Render(Renderer& renderer, Shader& shader, Camera& camera);
+	void Render(Renderer& renderer, Shader& shader, Camera& camera, int layer);
 
 	bool Raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance, glm::ivec3& hitBlock, glm::ivec3& placeBlock);
 
@@ -106,10 +108,9 @@ private:
 	std::condition_variable m_Condition;
 	std::atomic<bool> m_ShutDownThreadPool{ false };
 
+	std::mutex m_ChunksMutex;
+
 	void InitThreadPool(int numThreads = 4);
 	void ShutdownThreadPool();
 	void WorkerThreadLoop();
-	
-	
-
 };

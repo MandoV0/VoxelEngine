@@ -1,4 +1,5 @@
 ﻿#include "World.h"
+#include "Chunk.h"
 
 #include "../VertexBufferLayout.h"
 
@@ -48,6 +49,7 @@ World::~World()
 
 Chunk* World::GetChunk(int cx, int cz)
 {
+    std::lock_guard<std::mutex> lock(m_ChunksMutex);
     glm::ivec2 coord { cx, cz };
 
     auto it = m_Chunks.find(coord);
@@ -59,6 +61,7 @@ Chunk* World::GetChunk(int cx, int cz)
 
 Chunk& World::CreateChunk(int cx, int cz)
 {
+    std::lock_guard<std::mutex> lock(m_ChunksMutex);
     glm::ivec2 coord { cx, cz };
 
     auto it = m_Chunks.find(coord);
@@ -110,7 +113,11 @@ void World::GenerateChunk(int cx, int cz) {
 
     m_ActiveChunkGenerations++;
     auto chunkPtr = std::make_shared<Chunk>(glm::ivec2(cx, cz));
-    m_Chunks[glm::ivec2(cx, cz)] = chunkPtr;
+    
+    {
+        std::lock_guard<std::mutex> lock(m_ChunksMutex);
+        m_Chunks[glm::ivec2(cx, cz)] = chunkPtr;
+    }
 
     EnqueueJob([this, cx, cz, chunkPtr]() {
         constexpr int CHUNK_SIZE = 16;
@@ -263,7 +270,9 @@ void World::GenerateTree(std::shared_ptr<Chunk> chunk, int x, int y, int z, int 
 
                 // Skip corners
                 if (std::abs(dx) == radius && std::abs(dz) == radius) {
-                    if (rand() % 2 == 0) continue;  // 50% chance to skip corners
+                     // Deterministic "random" check for corner skipping
+                     unsigned int h = (lx * 374761393) ^ (layerY * 668265263) ^ (lz * 3575866297);
+                     if ((h % 2) == 0) continue;
                 }
 
                 // Check bounds
@@ -308,6 +317,7 @@ void World::MarkChunkDirty(int cx, int cz) {
 
 void World::DropChunk(int cx, int cz)
 {
+    std::lock_guard<std::mutex> lock(m_ChunksMutex);
     glm::ivec2 coord { cx, cz };
 	m_Chunks.erase(coord);
 }
@@ -342,7 +352,7 @@ void World::SetBlock(int wx, int wy, int wz, BlockType type)
     );
 }
 
-void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
+void World::Render(Renderer& renderer, Shader& shader, Camera& camera, int layer)
 {
     for (auto& [coord, chunk] : m_Chunks)
     {
@@ -351,8 +361,8 @@ void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
 
         if (frustumCulling)
         {
-            float minX = (float) coord.x * Chunk::WIDTH;
-            float minZ = (float) coord.y * Chunk::WIDTH;
+            float minX = (float)coord.x * Chunk::WIDTH;
+            float minZ = (float)coord.y * Chunk::WIDTH;
             float maxX = minX + Chunk::WIDTH;
             float maxZ = minZ + Chunk::WIDTH;
 
@@ -363,7 +373,7 @@ void World::Render(Renderer& renderer, Shader& shader, Camera& camera)
             }
         }
 
-        chunk->Render(renderer, shader);
+        chunk->Render(renderer, shader, layer);
     }
 }
 
@@ -512,7 +522,9 @@ void World::RenderBlockOutline(Renderer& renderer, Shader& shader, int wx, int w
 }
 
 void World::SpawnTree(int worldX, int worldY, int worldZ) {
-    int trunkHeight = 4 + (rand() % 3);
+    // Deterministic height
+    unsigned int h = (worldX * 374761393) ^ (worldY * 668265263) ^ (worldZ * 3575866297);
+    int trunkHeight = 4 + (h % 3);
 
     for (int i = 0; i < trunkHeight; i++) {
         SetBlock(worldX, worldY + i, worldZ, BlockType::WOOD);
@@ -531,7 +543,9 @@ void World::SpawnTree(int worldX, int worldY, int worldZ) {
 
                 // Corner Cutting
                 if (abs(lx) == radius && abs(lz) == radius) {
-                    if (radius > 1 || (rand() % 2 == 0)) continue;
+                    // Re-hash for corner
+                    unsigned int ch = h ^ (lx * 123) ^ (lz * 456) ^ (ly * 789);
+                    if (radius > 1 || (ch % 2 == 0)) continue;
                 }
 
                 if (GetBlock(worldX + lx, yPos, worldZ + lz) == BlockType::AIR) {

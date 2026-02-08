@@ -5,11 +5,11 @@
 #include <atomic>
 #include "../Shader.h"
 #include "Block.h"
+#include <array>
 #include "../VertexArray.h"
 #include "../VertexBuffer.h"
 #include "../IndexBuffer.h"
 #include "../Renderer.h"
-#include "World.h"
 
 class World;
 
@@ -18,6 +18,12 @@ struct Vertex {
 	float u, v;
 	float ao;
 	float light;
+};
+
+enum class RenderLayer {
+	SOLID = 0,
+	CUTOUT = 1,
+	TRANSLUCENT = 2
 };
 
 class Chunk
@@ -42,9 +48,15 @@ private:
 	*/
 	glm::ivec2 m_ChunkPosition;
 
+	// For Solid Meshes
 	VertexArray* m_VA;
 	VertexBuffer* m_VB;
 	IndexBuffer* m_IB;
+
+	// For Water Meshes
+	VertexArray* m_WaterVA;
+	VertexBuffer* m_WaterVB;
+	IndexBuffer* m_WaterIB;
 
 	ChunkData m_Blocks;
 	PaddedChunkData m_PaddedBlocks;
@@ -61,6 +73,10 @@ private:
 
 	std::vector<Vertex> m_IntermediateVertices;
 	std::vector<unsigned int> m_IntermediateIndices;
+
+	std::vector<Vertex> m_IntermediateWaterVertices;
+	std::vector<unsigned int> m_IntermediateWaterIndices;
+	bool m_HasNewWaterMesh = false;
 
 	bool m_isFullyLoaded = false;
 
@@ -87,7 +103,9 @@ public:
 	~Chunk();
 
 	void Update(World* world);
-	void Render(Renderer& renderer, Shader& shader);
+
+	void Render(Renderer& renderer, Shader& shader, int layer);
+
 	void SetBlock(int x, int y, int z, BlockType blockType);
 	BlockType GetBlockType(int x, int y, int z);
 	void SetSelectedBlock(bool hasBlock, glm::ivec3 position);

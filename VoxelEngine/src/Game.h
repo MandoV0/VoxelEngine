@@ -1,5 +1,7 @@
 #pragma once
 
+#define GLFW_INCLUDE_NONE
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm.hpp>
@@ -44,6 +46,8 @@ private:
 	// Shaders & Textures
     std::unique_ptr<Shader> m_WorldShader;
     std::unique_ptr<Shader> m_SkyboxShader;
+    std::unique_ptr<Shader> m_CutoutShader;
+    std::unique_ptr<Shader> m_WaterShader;
 
     std::unique_ptr<Texture> m_AtlasTexture;
 
