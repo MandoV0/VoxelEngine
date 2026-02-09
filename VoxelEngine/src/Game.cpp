@@ -74,12 +74,55 @@ void Game::Init()
 	m_FogShader = std::make_unique<Shader>("res/shaders/fog_vert.shader", "res/shaders/fog_frag.shader");
 
     m_AtlasTexture = std::make_unique<Texture>("res/textures/atlas.png");
+    m_NormalMapTexture = std::make_unique<Texture>("res/textures/NormalMap.png");
 
     unsigned int cubeMapID = Texture::LoadCubemap("res/textures/Cubemap_Sky_04-512x512.png");
     m_Skybox = std::make_unique<Skybox>(cubeMapID);
 
 	glfwSetInputMode(m_Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // Locks Cursor in Place. TODO: unlock on ESC
-}
+
+    // Deferred Rendering Setup
+    m_GBuffer = std::make_unique<GBuffer>();
+    m_GBuffer->Create(m_Width, m_Height);
+	
+    // SSGI Setup
+    m_SSGIShader = std::make_unique<Shader>("res/shaders/deferred_light_vertex.shader", "res/shaders/ssgi_fragment.shader");
+    m_SSGIShader->Bind();
+    m_SSGIShader->SetUniform1i("gPosition", 0);
+    m_SSGIShader->SetUniform1i("gNormal", 1);
+    m_SSGIShader->SetUniform1i("gAlbedo", 2);
+	
+    glGenFramebuffers(1, &m_SSGIFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_SSGIFBO);
+	    
+    glGenTextures(1, &m_SSGIColorBuffer);
+    glBindTexture(GL_TEXTURE_2D, m_SSGIColorBuffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_Width, m_Height, 0, GL_RGB, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_SSGIColorBuffer, 0);	    
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "SSGI Framebuffer not complete!" << std::endl;
+	        
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	
+    // Shadow Map Setup
+    m_ShadowMap = std::make_unique<ShadowMap>();
+    m_ShadowMap->Init(m_ShadowResolution, m_ShadowResolution);
+    m_ShadowShader = std::make_unique<Shader>("res/shaders/shadow_vertex.shader", "res/shaders/shadow_fragment.shader");
+
+    // Load deferred lighting shader
+    m_LightingShader = std::make_unique<Shader>("res/shaders/deferred_light_vertex.shader", "res/shaders/deferred_light_fragment.shader");
+    m_LightingShader->Bind();
+    m_LightingShader->SetUniform1i("gPosition", 0);
+    m_LightingShader->SetUniform1i("gNormal", 1);
+    m_LightingShader->SetUniform1i("gAlbedo", 2);
+    m_LightingShader->SetUniform1i("gMetallic", 3);
+    m_LightingShader->SetUniform1i("gRoughness", 4);
+    m_LightingShader->SetUniform1i("gAO", 5);
+    m_LightingShader->SetUniform1i("shadowMap", 6);
+    m_LightingShader->SetUniform1i("ssgiMap", 7);
+}   
 
 void Game::InitImGui()
 {
@@ -121,7 +164,7 @@ void Game::ProcessInput(float deltaTime)
 
     if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock))
     {
-        if (canClick)
+        if (canClick && m_CursorLocked)
         {
             if (leftMouseDown)
             {
@@ -148,63 +191,163 @@ void Game::Update(float deltaTime)
 
 void Game::Render()
 {
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    m_Renderer->Clear();
-
     glm::mat4 view = m_Camera->GetViewMatrix();
     glm::mat4 mvp = m_Projection * view * m_Model;
 
-    // Bind texture atlas
-    m_AtlasTexture->Bind(0);
+    // Light Properties
+    glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.5f));
+    glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 0.9f);
 
-    // SOLID BLOCK PASS
-	glDisable(GL_BLEND);
-	glDepthMask(true);
+    // --- SHADOW PASS ---
+    m_Renderer->BeginShadowPass(*m_ShadowMap);
+    
+    // Compute Light Space Matrix (Ortho centered on camera)
+    float near_plane = 1.0f, far_plane = 500.0f;
+    float shadowDist = 160.0f; // Shadow distance
+    glm::mat4 lightProjection = glm::ortho(-shadowDist, shadowDist, -shadowDist, shadowDist, near_plane, far_plane);
+    
+    // Snap light view to texels to avoid shimmering (simplified)
+    glm::vec3 camPos = m_Camera->GetPosition();
+    glm::mat4 lightView = glm::lookAt(camPos - lightDir * 100.0f, camPos, glm::vec3(0.0f, 1.0f, 0.0f));
+    m_LightSpaceMatrix = lightProjection * lightView;
 
+    m_ShadowShader->Bind();
+    m_ShadowShader->SetUniformMat4f("u_LightSpaceMatrix", m_LightSpaceMatrix);
+    m_ShadowShader->SetUniformMat4f("u_Model", m_Model);
+    
+    m_World->Render(*m_Renderer, *m_ShadowShader, *m_Camera, 0); // Solid
+    m_World->Render(*m_Renderer, *m_ShadowShader, *m_Camera, 1); // Cutout
+
+    m_Renderer->EndShadowPass(m_Width, m_Height);
+
+    // --- GEOMETRY PASS ---
+    m_Renderer->BeginGeometryPass(*m_GBuffer);
+
+    // SOLID BLOCKS
+    glDisable(GL_BLEND);
+    glDepthMask(true);
     m_WorldShader->Bind();
     m_WorldShader->SetUniformMat4f("u_Model", m_Model);
     m_WorldShader->SetUniformMat4f("u_View", view);
     m_WorldShader->SetUniformMat4f("u_Proj", m_Projection);
+    m_AtlasTexture->Bind(0);
+    m_NormalMapTexture->Bind(1);
     m_WorldShader->SetUniform1i("u_Texture", 0);
-
-    // FOG
-    m_WorldShader->SetUniform3f("u_FogColor", 0.369f, 0.627f, 0.71f);
-    m_WorldShader->SetUniform1f("u_FogDensity", m_FogDensity);
-    m_WorldShader->SetUniform1f("u_FogFalloff", m_FogFalloff);
-    m_WorldShader->SetUniform1f("u_FogHeight", m_FogHeight);
-    m_WorldShader->SetUniform1i("u_FogMode", m_FogMode);
-
+    m_WorldShader->SetUniform1i("u_NormalMap", 1);
     m_World->Render(*m_Renderer, *m_WorldShader, *m_Camera, 0);
 
-    // CUTOUT BLOCK PASS
+    // CUTOUT BLOCKS
     m_CutoutShader->Bind();
-    m_CutoutShader->SetUniformMat4f("u_MVP", mvp);
+    m_CutoutShader->SetUniformMat4f("u_Model", m_Model);
+    m_CutoutShader->SetUniformMat4f("u_View", view);
+    m_CutoutShader->SetUniformMat4f("u_Proj", m_Projection);
     m_CutoutShader->SetUniform1i("u_Texture", 0);
-
+    m_CutoutShader->SetUniform1i("u_NormalMap", 1);
     m_World->Render(*m_Renderer, *m_CutoutShader, *m_Camera, 1);
 
+    m_Renderer->EndGeometryPass();
 
-	// TRANSLUCENT BLOCK PASS
+    /*
+    // --- SSGI PASS ---
+    glBindFramebuffer(GL_FRAMEBUFFER, m_SSGIFBO);
+    glClear(GL_COLOR_BUFFER_BIT);
+    m_SSGIShader->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_PositionTex);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_NormalTex);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_AlbedoTex);
+    
+    m_SSGIShader->SetUniformMat4f("u_View", view);
+    m_SSGIShader->SetUniformMat4f("u_Proj", m_Projection);
+    */
+
+    m_Renderer->RenderQuad();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // --- LIGHTING PASS ---
+    m_Renderer->BeginLightingPass();
+
+    m_LightingShader->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_PositionTex);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_NormalTex);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_AlbedoTex);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_MetallicTex);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_RoughnessTex);
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->m_AOTex);
+    
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, m_ShadowMap->m_DepthMap);
+
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, m_SSGIColorBuffer);
+
+    // Lights
+    m_LightingShader->SetUniform3f("dirLight.direction", lightDir.x, lightDir.y, lightDir.z);
+    m_LightingShader->SetUniform3f("dirLight.color", lightColor.x, lightColor.y, lightColor.z);
+    m_LightingShader->SetUniform3f("viewPos", m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z);
+    m_LightingShader->SetUniformMat4f("u_LightSpaceMatrix", m_LightSpaceMatrix);
+
+    // Fog
+    m_LightingShader->SetUniform3f("u_FogColor", m_FogColor.x, m_FogColor.y, m_FogColor.z);
+    m_LightingShader->SetUniform1f("u_FogDensity", m_FogDensity);
+    m_LightingShader->SetUniform1f("u_FogHeight", m_FogHeight);
+    m_LightingShader->SetUniform1f("u_FogFalloff", m_FogFalloff);
+    m_LightingShader->SetUniform1i("u_FogMode", m_FogMode);
+
+    m_Renderer->RenderQuad();
+
+    m_Renderer->EndLightingPass();
+    
+    // Copy Depth for Forward Pass
+    m_Renderer->BlitDepthBuffer(*m_GBuffer, m_Width, m_Height);
+
+    // --- TRANSPARENT PASS ---
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);  // Disable depth writing for transparency
+    glDepthMask(false);
 
     m_WaterShader->Bind();
-    m_WaterShader->SetUniformMat4f("u_MVP", mvp);
+    m_WaterShader->SetUniformMat4f("u_Model", m_Model);
+    m_WaterShader->SetUniformMat4f("u_View", view);
+    m_WaterShader->SetUniformMat4f("u_Proj", m_Projection);
+    
+    // Bind Atlas for Water
+    m_AtlasTexture->Bind(0);
     m_WaterShader->SetUniform1i("u_Texture", 0);
+
     m_WaterShader->SetUniform1f("u_Time", static_cast<float>(glfwGetTime()));
+    m_WaterShader->SetUniform3f("viewPos", m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z);
+    
+    // Lights & Shadows
+    m_WaterShader->SetUniform3f("dirLight.direction", lightDir.x, lightDir.y, lightDir.z);
+    m_WaterShader->SetUniform3f("dirLight.color", lightColor.x, lightColor.y, lightColor.z);
+    m_WaterShader->SetUniformMat4f("u_LightSpaceMatrix", m_LightSpaceMatrix);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_ShadowMap->m_DepthMap);
+    m_WaterShader->SetUniform1i("shadowMap", 1);
+
+
+    // Fog
+    m_WaterShader->SetUniform3f("u_FogColor", m_FogColor.x, m_FogColor.y, m_FogColor.z);
+    m_WaterShader->SetUniform1f("u_FogDensity", m_FogDensity);
+    m_WaterShader->SetUniform1f("u_FogHeight", m_FogHeight);
+    m_WaterShader->SetUniform1f("u_FogFalloff", m_FogFalloff);
+    m_WaterShader->SetUniform1i("u_FogMode", m_FogMode);
 
     m_World->Render(*m_Renderer, *m_WaterShader, *m_Camera, 2);
 
-    // Reset Rendering State
-    glDepthMask(GL_TRUE);
+    glDepthMask(true);
     glDisable(GL_BLEND);
 
-    if (m_World->Raycast(m_Camera->GetPosition(), m_Camera->GetFront(), 15.0f, m_HitBlock, m_PlaceBlock))
-    {
-        m_World->RenderBlockOutline(*m_Renderer, *m_WorldShader, m_HitBlock.x, m_HitBlock.y, m_HitBlock.z);
-    }
-
+    // --- SKYBOX ---
     m_Renderer->DrawSkybox(*m_Skybox, view, m_Projection);
 }
 
@@ -227,6 +370,7 @@ void Game::RenderImGui()
     ImGui::Checkbox("Frustum Culling", &m_World->frustumCulling);
 
 	ImGui::BeginGroup();
+    ImGui::ColorEdit3("Fog Color", &m_FogColor.x);
 	ImGui::SliderFloat("Fog Density", &m_FogDensity, 0.0f, 0.1f);
 	ImGui::SliderFloat("Fog FallOff", &m_FogFalloff, 0.0f, 0.5f);
 	ImGui::SliderFloat("Fog Height", &m_FogHeight, 0.0f, 512.0f);

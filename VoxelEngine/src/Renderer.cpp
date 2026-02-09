@@ -47,6 +47,64 @@ void Renderer::DrawSkybox(const Skybox& skybox, const glm::mat4& view, const glm
     GLCall(glDepthFunc(GL_LESS));
 }
 
+void Renderer::BeginGeometryPass(const GBuffer& gBuffer)
+{
+    m_CurrentGBuffer = &gBuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer.m_FBO);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void Renderer::EndGeometryPass() const {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::BeginLightingPass() const
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Bind GBuffer textures
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_PositionTex);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_NormalTex);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_AlbedoTex);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_MetallicTex);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_RoughnessTex);
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, m_CurrentGBuffer->m_AOTex);
+}
+
+void Renderer::EndLightingPass() const
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::BlitDepthBuffer(const GBuffer& gBuffer, int width, int height)
+{
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer.m_FBO);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Write to default framebuffer
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::BeginShadowPass(const ShadowMap& shadowMap)
+{
+    shadowMap.Bind();
+    glClear(GL_DEPTH_BUFFER_BIT);
+    // Cull front faces for shadows to prevent peter panning (optional but often good)
+    // glCullFace(GL_FRONT);
+}
+
+void Renderer::EndShadowPass(int viewportWidth, int viewportHeight) const
+{
+    // glCullFace(GL_BACK); // Reset culling
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, viewportWidth, viewportHeight);
+}
+
 void Renderer::RenderQuad() {
     if (m_QuadVAO == 0) {
         float quadVertices[] = {
