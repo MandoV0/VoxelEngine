@@ -1,3 +1,31 @@
+# Voxel Engine
+A custom 3D Voxel Engine developed from scratch in C++. This project is a hobby project inspired by the sandbox mechanics of Minecraft.
+
+# Features
+- Procedural World Generation: Infinite Terran generation. The Algorithm for this is still basic and also needs caves and biomes.
+- Frustum Culling: Only renders chunks in the cameras view to increase performance. Most recent update that split Solid and Transparent meshes into seperate Buffers however makes it slow.
+- Face Culling: Prevents the rendering of hidden blocks faces. Also takes transparent blocks into account.
+- Transparency Layer: Dedicated rendering pass for water and glass blocks.
+- Skybox: Cubemap for the Sky
+- Multithreading: Thread-Pool for async chunk generation and meshing for smooth traversal without frame drops.
+- Raycasting: For Block manipulation
+
+# Tech Stack
+- C++17
+- OpenGL 4.x
+- GLEW/GLFW
+- GLM: For Vector/Matrix math
+- FastNoiseLite: For the World generation
+- ImGui
+- stb_image
+
+# Performance
+This project has taught me a lot about performance optimization and how tiny code changes can have a massive impact on the overall performance.
+
+- **Memory Reservation:** One of the most significant fixes for stuttering/freezing was choosing and reserving a optimal amount of memory. Choosing to big of a numbers hurts performance and choosing to small of a number hurts performance with reallocations.
+- **Efficient Object Construction:** How seemingly non significant changes like using `emplace_back` instead of `push_back` increases performance by avoiding copy and move operations.
+- **Data Batching & Structs:** Instead of sending individual values, I optimized data transfer by packing attributes into structs. Moving data in batches significantly increased performance.
+- **Asynchronous Workloads:** Implementing a Thread-Pool was essential for heavy computations (like Terrain-Generation and Meshing) to decouple them from the main render loop. This ensures the engine maintains a high FPS and doesnt freeze even while generating massive parts of the world in the background.
 
 # Better Water Rendering (08.02.2026)
 <img width="2559" height="1388" alt="Screenshot 2026-02-08 162919" src="https://github.com/user-attachments/assets/581ff7cf-a498-475d-a582-770a5d1d442a" />
